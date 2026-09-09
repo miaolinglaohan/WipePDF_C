@@ -12,6 +12,7 @@
 #include <QShortcut>
 #include <QtConcurrent>
 #include <QFutureWatcher>
+#include <QFileInfo>
 
 namespace wipepdf {
 
@@ -66,7 +67,7 @@ void MainWindow::setupUi() {
 
     // Navigation buttons
     m_prevBtn = new QPushButton(this);
-    m_pageLabel = new QLabel("第 0 / 0 页", this);
+    m_pageLabel = new QLabel(this);
     m_nextBtn = new QPushButton(this);
     topLayout->addWidget(m_prevBtn);
     topLayout->addWidget(m_pageLabel);
@@ -83,7 +84,14 @@ void MainWindow::setupUi() {
 
     topLayout->addStretch();
 
-    m_langBtn = new QPushButton("English", this);
+    // Theme toggle button
+    m_themeBtn = new QPushButton(this);
+    m_themeBtn->setObjectName("themeBtn");
+    topLayout->addWidget(m_themeBtn);
+    topLayout->addSpacing(6);
+
+    // Language switch button
+    m_langBtn = new QPushButton(this);
     m_langBtn->setObjectName("langBtn");
     topLayout->addWidget(m_langBtn);
 
@@ -95,17 +103,19 @@ void MainWindow::setupUi() {
     // Sidebar
     auto *sidebar = new QWidget(this);
     sidebar->setObjectName("sidebar");
-    sidebar->setFixedWidth(380);
+    sidebar->setFixedWidth(410);
     auto *sideLayout = new QVBoxLayout(sidebar);
     sideLayout->setContentsMargins(14, 14, 14, 14);
     sideLayout->setSpacing(12);
 
     // Section: Input & Output
-    auto *ioGroup = new QGroupBox(this);
-    ioGroup->setObjectName("ioGroup");
-    auto *ioLayout = new QVBoxLayout(ioGroup);
+    m_ioGroup = new QGroupBox(this);
+    m_ioGroup->setObjectName("ioGroup");
+    auto *ioLayout = new QVBoxLayout(m_ioGroup);
+    ioLayout->setSpacing(8);
 
     auto *btnRow = new QHBoxLayout();
+    btnRow->setSpacing(6);
     m_choosePdfBtn = new QPushButton(this);
     m_chooseDirBtn = new QPushButton(this);
     m_closeDocBtn = new QPushButton(this);
@@ -114,7 +124,7 @@ void MainWindow::setupUi() {
     btnRow->addWidget(m_closeDocBtn);
     ioLayout->addLayout(btnRow);
 
-    m_inputPathLabel = new QLabel("未选择文件", this);
+    m_inputPathLabel = new QLabel(this);
     m_inputPathLabel->setWordWrap(true);
     m_inputPathLabel->setStyleSheet("color: #9aa0a6; font-size: 11px;");
     ioLayout->addWidget(m_inputPathLabel);
@@ -130,18 +140,18 @@ void MainWindow::setupUi() {
 
     auto *customDirRow = new QHBoxLayout();
     m_outputDirEdit = new QLineEdit(this);
-    m_outputDirEdit->setPlaceholderText("自定义输出目录 (可选)");
     m_browseOutputBtn = new QPushButton("...", this);
     m_browseOutputBtn->setFixedWidth(36);
     customDirRow->addWidget(m_outputDirEdit);
     customDirRow->addWidget(m_browseOutputBtn);
     ioLayout->addLayout(customDirRow);
 
-    sideLayout->addWidget(ioGroup);
+    sideLayout->addWidget(m_ioGroup);
 
     // Section: Mode Selector
-    auto *modeGroup = new QGroupBox(this);
-    auto *modeGroupLayout = new QVBoxLayout(modeGroup);
+    m_modeGroup = new QGroupBox(this);
+    m_modeGroup->setObjectName("modeGroup");
+    auto *modeGroupLayout = new QVBoxLayout(m_modeGroup);
     auto *modeRow = new QHBoxLayout();
     m_autoModeRadio = new QRadioButton(this);
     m_autoModeRadio->setChecked(true);
@@ -159,17 +169,16 @@ void MainWindow::setupUi() {
 
     m_chkLinks = new QCheckBox(this);
     m_linkRegexEdit = new QLineEdit(this);
-    m_linkRegexEdit->setPlaceholderText("URL 过滤正则，如 https?://.*");
 
     m_chkBottom = new QCheckBox(this);
     auto *bottomRow = new QHBoxLayout();
-    auto *bottomLbl = new QLabel("高度:", this);
+    m_bottomHeightLabel = new QLabel(this);
     m_bottomHeightSpin = new QSpinBox(this);
     m_bottomHeightSpin->setRange(10, 400);
     m_bottomHeightSpin->setValue(60);
     bottomRow->addWidget(m_chkBottom);
     bottomRow->addStretch();
-    bottomRow->addWidget(bottomLbl);
+    bottomRow->addWidget(m_bottomHeightLabel);
     bottomRow->addWidget(m_bottomHeightSpin);
 
     m_chkText = new QCheckBox(this);
@@ -196,11 +205,6 @@ void MainWindow::setupUi() {
     auto *matchRow = new QHBoxLayout();
     m_matchModeLabel = new QLabel(this);
     m_matchModeCombo = new QComboBox(this);
-    m_matchModeCombo->addItem("智能综合", "auto");
-    m_matchModeCombo->addItem("相对位置", "position");
-    m_matchModeCombo->addItem("固定区域", "region");
-    m_matchModeCombo->addItem("文本内容", "text");
-    m_matchModeCombo->addItem("链接 URL", "url");
     matchRow->addWidget(m_matchModeLabel);
     matchRow->addWidget(m_matchModeCombo);
     interactiveLayout->addLayout(matchRow);
@@ -210,7 +214,7 @@ void MainWindow::setupUi() {
     m_interactiveHint->setStyleSheet("color: #8ab4f8; font-size: 11px; margin-top: 4px;");
     interactiveLayout->addWidget(m_interactiveHint);
 
-    m_rulesCountLabel = new QLabel("当前规则数: 0 条", this);
+    m_rulesCountLabel = new QLabel(this);
     interactiveLayout->addWidget(m_rulesCountLabel);
 
     m_rulesListWidget = new QListWidget(this);
@@ -226,7 +230,7 @@ void MainWindow::setupUi() {
 
     m_modeStack->addWidget(interactivePage);
     modeGroupLayout->addWidget(m_modeStack);
-    sideLayout->addWidget(modeGroup);
+    sideLayout->addWidget(m_modeGroup);
 
     // Section: Actions
     auto *actionRow = new QHBoxLayout();
@@ -274,6 +278,7 @@ void MainWindow::setupUi() {
     connect(m_clearRulesBtn, &QPushButton::clicked, this, &MainWindow::onClearRules);
     connect(m_previewBtn, &QPushButton::clicked, this, &MainWindow::onPreviewDetection);
     connect(m_processBtn, &QPushButton::clicked, this, &MainWindow::onStartProcess);
+    connect(m_themeBtn, &QPushButton::clicked, this, &MainWindow::onSwitchTheme);
     connect(m_langBtn, &QPushButton::clicked, this, &MainWindow::onSwitchLanguage);
 
     connect(m_prevBtn, &QPushButton::clicked, [this]() { m_viewer->setCurrentPage(m_viewer->currentPage() - 1); });
@@ -288,93 +293,355 @@ void MainWindow::setupUi() {
 }
 
 void MainWindow::setupStyles() {
-    QString qss = R"(
-        QMainWindow, QWidget {
-            background-color: #1a1a20;
-            color: #e0e0e6;
-            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-            font-size: 13px;
-        }
-        #topBar {
-            background-color: #24242c;
-            border-bottom: 1px solid #33333e;
-        }
-        #brandLabel {
-            font-size: 16px;
-            font-weight: bold;
-            color: #4da3ff;
-        }
-        #sidebar {
-            background-color: #202028;
-            border-right: 1px solid #33333e;
-        }
-        QGroupBox {
-            border: 1px solid #33333e;
-            border-radius: 6px;
-            margin-top: 8px;
-            padding-top: 10px;
-            font-weight: bold;
-        }
-        QPushButton {
-            background-color: #2d2d38;
-            color: #f0f0f5;
-            border: 1px solid #444452;
-            border-radius: 5px;
-            padding: 5px 12px;
-        }
-        QPushButton:hover {
-            background-color: #383846;
-            border-color: #4da3ff;
-        }
-        QPushButton:pressed {
-            background-color: #22222b;
-        }
-        #processBtn {
-            background-color: #007acc;
-            border-color: #007acc;
-            font-weight: bold;
-            color: #ffffff;
-        }
-        #processBtn:hover {
-            background-color: #1f8ad2;
-        }
-        QLineEdit, QSpinBox, QComboBox, QListWidget, QTextEdit {
-            background-color: #282832;
-            color: #e0e0e6;
-            border: 1px solid #3e3e4c;
-            border-radius: 4px;
-            padding: 4px 8px;
-        }
-        QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
-            border-color: #4da3ff;
-        }
-        QProgressBar {
-            background-color: #282832;
-            border-radius: 3px;
-        }
-        QProgressBar::chunk {
-            background-color: #007acc;
-            border-radius: 3px;
-        }
-    )";
-    setStyleSheet(qss);
+    if (m_theme == Theme::Dark) {
+        QString qss = R"(
+            QMainWindow, QWidget {
+                background-color: #1a1a22;
+                color: #e2e4ec;
+                font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+                font-size: 13px;
+            }
+            #topBar {
+                background-color: #22222c;
+                border-bottom: 1px solid #323242;
+            }
+            #brandLabel {
+                font-size: 16px;
+                font-weight: bold;
+                color: #4da3ff;
+            }
+            #sidebar {
+                background-color: #1f1f28;
+                border-right: 1px solid #323242;
+            }
+            QGroupBox {
+                border: 1px solid #363648;
+                border-radius: 6px;
+                margin-top: 10px;
+                padding-top: 12px;
+                font-weight: bold;
+                color: #b0b4c8;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 4px;
+            }
+            QPushButton {
+                background-color: #2b2b38;
+                color: #f0f2fa;
+                border: 1px solid #424255;
+                border-radius: 5px;
+                padding: 5px 8px;
+            }
+            QPushButton:hover {
+                background-color: #363648;
+                border-color: #4da3ff;
+            }
+            QPushButton:pressed {
+                background-color: #20202a;
+            }
+            QPushButton:disabled {
+                background-color: #22222c;
+                color: #636375;
+                border-color: #323242;
+            }
+            #processBtn {
+                background-color: #007acc;
+                border-color: #007acc;
+                font-weight: bold;
+                color: #ffffff;
+            }
+            #processBtn:hover {
+                background-color: #0098ff;
+                border-color: #0098ff;
+            }
+            QLineEdit, QSpinBox, QComboBox, QListWidget, QTextEdit {
+                background-color: #262634;
+                color: #e2e4ec;
+                border: 1px solid #3e3e52;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QTextEdit:focus {
+                border-color: #4da3ff;
+            }
+            QProgressBar {
+                background-color: #262634;
+                border-radius: 3px;
+            }
+            QProgressBar::chunk {
+                background-color: #007acc;
+                border-radius: 3px;
+            }
+            QCheckBox, QRadioButton {
+                color: #e2e4ec;
+                spacing: 7px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #7c7c96;
+                border-radius: 4px;
+                background-color: #262634;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #4da3ff;
+                background-color: #303042;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #007acc;
+                border: 2px solid #007acc;
+                image: url(:/icons/check_white.png);
+            }
+            QRadioButton::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #7c7c96;
+                border-radius: 9px;
+                background-color: #262634;
+            }
+            QRadioButton::indicator:hover {
+                border-color: #4da3ff;
+                background-color: #303042;
+            }
+            QRadioButton::indicator:checked {
+                border: 2px solid #007acc;
+                background-color: #262634;
+                image: url(:/icons/radio_dot_blue.png);
+            }
+            QScrollBar:vertical {
+                background: #1a1a22;
+                width: 10px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: #3e3e52;
+                min-height: 20px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #565672;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        )";
+        setStyleSheet(qss);
+        m_viewer->setTheme(true);
+    } else {
+        // Light Theme
+        QString qss = R"(
+            QMainWindow, QWidget {
+                background-color: #f1f5f9;
+                color: #1e293b;
+                font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+                font-size: 13px;
+            }
+            #topBar {
+                background-color: #ffffff;
+                border-bottom: 1px solid #e2e8f0;
+            }
+            #brandLabel {
+                font-size: 16px;
+                font-weight: bold;
+                color: #0284c7;
+            }
+            #sidebar {
+                background-color: #ffffff;
+                border-right: 1px solid #e2e8f0;
+            }
+            QGroupBox {
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                margin-top: 10px;
+                padding-top: 12px;
+                font-weight: bold;
+                color: #334155;
+                background-color: #f8fafc;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 4px;
+            }
+            QPushButton {
+                background-color: #ffffff;
+                color: #1e293b;
+                border: 1px solid #cbd5e1;
+                border-radius: 5px;
+                padding: 5px 8px;
+            }
+            QPushButton:hover {
+                background-color: #f1f5f9;
+                border-color: #0284c7;
+            }
+            QPushButton:pressed {
+                background-color: #e2e8f0;
+            }
+            QPushButton:disabled {
+                background-color: #f8fafc;
+                color: #94a3b8;
+                border-color: #e2e8f0;
+            }
+            #processBtn {
+                background-color: #0284c7;
+                border-color: #0284c7;
+                font-weight: bold;
+                color: #ffffff;
+            }
+            #processBtn:hover {
+                background-color: #0369a1;
+                border-color: #0369a1;
+            }
+            QLineEdit, QSpinBox, QComboBox, QListWidget, QTextEdit {
+                background-color: #ffffff;
+                color: #1e293b;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QTextEdit:focus {
+                border-color: #0284c7;
+            }
+            QProgressBar {
+                background-color: #e2e8f0;
+                border-radius: 3px;
+            }
+            QProgressBar::chunk {
+                background-color: #0284c7;
+                border-radius: 3px;
+            }
+            QCheckBox, QRadioButton {
+                color: #1e293b;
+                spacing: 7px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #94a3b8;
+                border-radius: 4px;
+                background-color: #ffffff;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #0284c7;
+                background-color: #f8fafc;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #0284c7;
+                border: 2px solid #0284c7;
+                image: url(:/icons/check_white.png);
+            }
+            QRadioButton::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #94a3b8;
+                border-radius: 9px;
+                background-color: #ffffff;
+            }
+            QRadioButton::indicator:hover {
+                border-color: #0284c7;
+                background-color: #f8fafc;
+            }
+            QRadioButton::indicator:checked {
+                border: 2px solid #0284c7;
+                background-color: #ffffff;
+                image: url(:/icons/radio_dot_blue.png);
+            }
+            QScrollBar:vertical {
+                background: #f1f5f9;
+                width: 10px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: #cbd5e1;
+                min-height: 20px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #94a3b8;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        )";
+        setStyleSheet(qss);
+        m_viewer->setTheme(false);
+    }
+}
+
+void MainWindow::onSwitchTheme() {
+    if (m_theme == Theme::Dark) {
+        m_theme = Theme::Light;
+    } else {
+        m_theme = Theme::Dark;
+    }
+    setupStyles();
+    m_themeBtn->setText(m_theme == Theme::Dark ? tr_("theme_light") : tr_("theme_dark"));
 }
 
 void MainWindow::retranslateUi() {
     setWindowTitle(tr_("app_title"));
     m_brandLabel->setText(tr_("app_brand"));
+
+    // Group box headers
+    m_ioGroup->setTitle(tr_("input_frame"));
+    m_modeGroup->setTitle(tr_("mode_frame"));
+
+    // Top action buttons
     m_choosePdfBtn->setText(tr_("btn_choose_pdf"));
+    m_choosePdfBtn->setToolTip(tr_("tip_choose_pdf"));
     m_chooseDirBtn->setText(tr_("btn_choose_dir"));
+    m_chooseDirBtn->setToolTip(tr_("tip_choose_dir"));
     m_closeDocBtn->setText(tr_("btn_close"));
+    m_closeDocBtn->setToolTip(tr_("tip_close_doc"));
+
+    // Radio modes
     m_saveAsRadio->setText(tr_("btn_save_as"));
     m_overwriteRadio->setText(tr_("btn_overwrite"));
     m_autoModeRadio->setText(tr_("mode_auto"));
     m_interactiveModeRadio->setText(tr_("mode_interactive"));
 
+    // Auto Mode options
     m_chkLinks->setText(tr_("opt_remove_all_links"));
     m_chkBottom->setText(tr_("opt_remove_bottom"));
+    m_bottomHeightLabel->setText(tr_("label_height"));
     m_chkText->setText(tr_("opt_text_regex"));
     m_chkOverlays->setText(tr_("opt_detect_overlays"));
+
+    // Placeholders
+    m_outputDirEdit->setPlaceholderText(tr_("custom_output_placeholder"));
+    m_linkRegexEdit->setPlaceholderText(tr_("link_regex_placeholder"));
+    m_textRegexEdit->setPlaceholderText(tr_("text_regex_placeholder"));
+
+    // Default text regex
+    QString currentRegex = m_textRegexEdit->text().trimmed();
+    if (currentRegex.isEmpty() || currentRegex == "水印|www\\..*?\\.com" || currentRegex == "watermark|www\\..*?\\.com") {
+        m_textRegexEdit->setText(tr_("default_text_regex"));
+    }
+
+    // Input path label
+    if (m_currentInputPath.isEmpty()) {
+        m_inputPathLabel->setText(tr_("no_file_selected"));
+    } else if (m_isBatch) {
+        m_inputPathLabel->setText(tr_("dir_prefix").arg(m_currentInputPath));
+    } else {
+        m_inputPathLabel->setText(QFileInfo(m_currentInputPath).fileName());
+    }
+
+    // Match mode combobox
+    QString curMatchKey = m_matchModeCombo->currentData().toString();
+    if (curMatchKey.isEmpty()) curMatchKey = "auto";
+    m_matchModeCombo->blockSignals(true);
+    m_matchModeCombo->clear();
+    m_matchModeCombo->addItem(tr_("match_auto"), "auto");
+    m_matchModeCombo->addItem(tr_("match_position"), "position");
+    m_matchModeCombo->addItem(tr_("match_region"), "region");
+    m_matchModeCombo->addItem(tr_("match_text"), "text");
+    m_matchModeCombo->addItem(tr_("match_url"), "url");
+    int matchIdx = m_matchModeCombo->findData(curMatchKey);
+    if (matchIdx >= 0) m_matchModeCombo->setCurrentIndex(matchIdx);
+    m_matchModeCombo->blockSignals(false);
 
     m_matchModeLabel->setText(tr_("match_mode_label"));
     m_undoRuleBtn->setText(tr_("btn_undo_rule"));
@@ -385,12 +652,18 @@ void MainWindow::retranslateUi() {
     m_previewBtn->setText(tr_("btn_preview"));
     m_processBtn->setText(tr_("btn_process"));
 
+    // Top Navigation
     m_prevBtn->setText(tr_("btn_prev"));
     m_nextBtn->setText(tr_("btn_next"));
     m_zoomInBtn->setText(tr_("btn_zoom_in"));
     m_zoomOutBtn->setText(tr_("btn_zoom_out"));
     m_fitWidthBtn->setText(tr_("btn_fit_width"));
     m_langBtn->setText(tr_("switch_lang"));
+    m_themeBtn->setText(m_theme == Theme::Dark ? tr_("theme_light") : tr_("theme_dark"));
+
+    int curPage = (m_doc && m_doc->isOpen()) ? (m_viewer->currentPage() + 1) : 0;
+    int totPage = (m_doc && m_doc->isOpen()) ? m_doc->pageCount() : 0;
+    m_pageLabel->setText(tr_("page_nav").arg(curPage).arg(totPage));
 
     if (m_statusLabel->text().isEmpty() || m_statusLabel->text() == "就绪" || m_statusLabel->text() == "Ready") {
         m_statusLabel->setText(tr_("ready"));
@@ -410,7 +683,7 @@ void MainWindow::openPdf(const QString &filePath) {
     closePdf();
     QString err;
     if (!m_doc->open(filePath, &err)) {
-        QMessageBox::critical(this, "错误", QString("无法打开 PDF 文件:\n%1").arg(err));
+        QMessageBox::critical(this, tr_("title_error"), QString("无法打开 PDF 文件:\n%1").arg(err));
         return;
     }
 
@@ -419,7 +692,7 @@ void MainWindow::openPdf(const QString &filePath) {
     m_inputPathLabel->setText(QFileInfo(filePath).fileName());
     m_viewer->setDocument(m_doc.get());
     m_statusLabel->setText(tr_("ready"));
-    appendLog(QString("已加载: %1 (共 %2 页)").arg(filePath).arg(m_doc->pageCount()));
+    appendLog(tr_("log_doc_loaded").arg(filePath).arg(m_doc->pageCount()));
 }
 
 void MainWindow::closePdf() {
@@ -428,35 +701,35 @@ void MainWindow::closePdf() {
         m_doc->close();
     }
     m_currentInputPath.clear();
-    m_inputPathLabel->setText("未选择文件");
-    m_pageLabel->setText("第 0 / 0 页");
+    m_inputPathLabel->setText(tr_("no_file_selected"));
+    m_pageLabel->setText(tr_("page_nav").arg(0).arg(0));
 }
 
 void MainWindow::onChoosePdf() {
-    QString path = QFileDialog::getOpenFileName(this, "选择 PDF 文件", "", "PDF Files (*.pdf)");
+    QString path = QFileDialog::getOpenFileName(this, tr_("dialog_choose_pdf"), "", "PDF Files (*.pdf)");
     if (!path.isEmpty()) {
         openPdf(path);
     }
 }
 
 void MainWindow::onChooseDir() {
-    QString dir = QFileDialog::getExistingDirectory(this, "选择 PDF 文件夹");
+    QString dir = QFileDialog::getExistingDirectory(this, tr_("dialog_choose_dir"));
     if (!dir.isEmpty()) {
         closePdf();
         m_isBatch = true;
         m_currentInputPath = dir;
-        m_inputPathLabel->setText(QString("目录: %1").arg(dir));
-        appendLog(QString("已选择批量输入目录: %1").arg(dir));
+        m_inputPathLabel->setText(tr_("dir_prefix").arg(dir));
+        appendLog(tr_("log_batch_selected").arg(dir));
     }
 }
 
 void MainWindow::onCloseDoc() {
     closePdf();
-    appendLog("已关闭文档并释放文件占用。");
+    appendLog(tr_("log_doc_closed"));
 }
 
 void MainWindow::onBrowseOutputDir() {
-    QString dir = QFileDialog::getExistingDirectory(this, "选择输出目录");
+    QString dir = QFileDialog::getExistingDirectory(this, tr_("dialog_choose_out_dir"));
     if (!dir.isEmpty()) {
         m_outputDirEdit->setText(dir);
         m_customOutputDir = dir;
@@ -479,7 +752,7 @@ void MainWindow::onUndoRule() {
         }
         m_rulesCountLabel->setText(tr_("rules_count").arg(m_cleaner.interactiveRules().size()));
         refreshInteractiveHighlights();
-        appendLog("已撤销上一次添加的规则。");
+        appendLog(tr_("log_rule_undone"));
     }
 }
 
@@ -488,14 +761,14 @@ void MainWindow::onClearRules() {
     m_rulesListWidget->clear();
     m_rulesCountLabel->setText(tr_("rules_count").arg(0));
     m_viewer->clearHighlights();
-    appendLog("已清空所有交互点选规则。");
+    appendLog(tr_("log_rules_cleared"));
 }
 
 void MainWindow::onViewerPageChanged(int pageIdx, int totalPages) {
     if (totalPages > 0) {
         m_pageLabel->setText(tr_("page_nav").arg(pageIdx + 1).arg(totalPages));
     } else {
-        m_pageLabel->setText("第 0 / 0 页");
+        m_pageLabel->setText(tr_("page_nav").arg(0).arg(0));
     }
 }
 
@@ -510,7 +783,7 @@ void MainWindow::onViewerPointClicked(int pageIdx, const QPointF &pdfPt) {
 
     auto picked = Detectors::pickElementAt(*m_doc, pageIdx, pdfPt);
     if (picked.empty()) {
-        appendLog(QString("点击位置 (%1, %2) 未命中任何可清理元素。").arg(pdfPt.x(), 0, 'f', 1).arg(pdfPt.y(), 0, 'f', 1));
+        appendLog(tr_("log_no_element_picked").arg(pdfPt.x(), 0, 'f', 1).arg(pdfPt.y(), 0, 'f', 1));
         return;
     }
 
@@ -535,7 +808,7 @@ void MainWindow::onViewerPointClicked(int pageIdx, const QPointF &pdfPt) {
     m_rulesCountLabel->setText(tr_("rules_count").arg(m_cleaner.interactiveRules().size()));
 
     refreshInteractiveHighlights();
-    appendLog(QString("已添加规则: %1").arg(rule.describe()));
+    appendLog(tr_("log_rule_added").arg(rule.describe()));
 }
 
 void MainWindow::refreshInteractiveHighlights() {
@@ -546,14 +819,14 @@ void MainWindow::refreshInteractiveHighlights() {
 
 void MainWindow::onPreviewDetection() {
     if (!m_doc || !m_doc->isOpen()) {
-        QMessageBox::warning(this, "提示", tr_("msg_no_pdf"));
+        QMessageBox::warning(this, tr_("title_notice"), tr_("msg_no_pdf"));
         return;
     }
 
     if (m_interactiveModeRadio->isChecked()) {
         refreshInteractiveHighlights();
         auto matches = m_cleaner.previewInteractive(*m_doc);
-        appendLog(QString("交互模式预览: 共匹配到 %1 处元素。").arg(matches.size()));
+        appendLog(tr_("log_preview_interactive").arg(matches.size()));
     } else {
         AutoOptions opts;
         opts.removeAllLinks = m_chkLinks->isChecked();
@@ -566,13 +839,13 @@ void MainWindow::onPreviewDetection() {
 
         auto detected = m_cleaner.previewAuto(*m_doc, opts);
         m_viewer->setPreviewElements(detected);
-        appendLog(QString("自动模式预览: 共检测到 %1 处水印元素。").arg(detected.size()));
+        appendLog(tr_("log_preview_auto").arg(detected.size()));
     }
 }
 
 void MainWindow::onStartProcess() {
     if (m_currentInputPath.isEmpty()) {
-        QMessageBox::warning(this, "提示", tr_("msg_no_pdf"));
+        QMessageBox::warning(this, tr_("title_notice"), tr_("msg_no_pdf"));
         return;
     }
 
@@ -590,7 +863,7 @@ void MainWindow::onStartProcess() {
     QString outDir = m_outputDirEdit->text().trimmed();
 
     m_progressBar->setValue(20);
-    m_statusLabel->setText("正在执行清理...");
+    m_statusLabel->setText(tr_("status_cleaning"));
     m_processBtn->setEnabled(false);
 
     // If single file & overwrite: close viewer first to release Windows file lock!
@@ -608,7 +881,7 @@ void MainWindow::onStartProcess() {
                 m_progressBar->setValue(100);
                 m_statusLabel->setText(tr_("msg_complete"));
                 m_processBtn->setEnabled(true);
-                QMessageBox::information(this, "完成", "批量 PDF 水印清理已完成！");
+                QMessageBox::information(this, tr_("title_complete"), tr_("batch_complete_msg"));
             });
         } else {
             QString outPath = outDir.isEmpty() ? originalFile : outDir;
@@ -621,10 +894,10 @@ void MainWindow::onStartProcess() {
                     appendLog(res.message);
                     // Reopen cleaned file
                     openPdf(overwrite ? originalFile : res.outputPath);
-                    QMessageBox::information(this, "完成", res.message);
+                    QMessageBox::information(this, tr_("title_complete"), res.message);
                 } else {
-                    m_statusLabel->setText("处理失败");
-                    QMessageBox::critical(this, "错误", res.message);
+                    m_statusLabel->setText(tr_("status_failed"));
+                    QMessageBox::critical(this, tr_("title_error"), res.message);
                 }
             });
         }

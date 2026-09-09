@@ -31,6 +31,7 @@ public:
     void setPreviewElements(const std::vector<Element> &elements);
     void setInteractiveElements(const std::vector<Element> &elements);
     void clearHighlights();
+    void setTheme(bool isDark);
 
 signals:
     void pointClicked(int pageIdx, const QPointF &pdfPoint);
@@ -59,6 +60,7 @@ public:
     void setDocument(PdfDocument *doc);
     void updatePage(int page, float zoom);
     void setHighlights(const std::vector<Element> &preview, const std::vector<Element> &interactive);
+    void setTheme(bool isDark);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -69,6 +71,7 @@ private:
     PdfDocument *m_doc = nullptr;
     int m_page = 0;
     float m_zoom = 1.0f;
+    bool m_isDark = true;
     QImage m_pageImage;
     QRectF m_pageBounds;
     std::vector<Element> m_previewElements;

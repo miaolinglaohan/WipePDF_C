@@ -1,5 +1,6 @@
 #include "PdfViewer.h"
 #include "core/PdfDocument.h"
+#include "i18n/I18n.h"
 #include <QPainter>
 #include <QMouseEvent>
 #include <QDragEnterEvent>
@@ -13,7 +14,7 @@ namespace wipepdf {
 PdfViewer::PdfViewer(QWidget *parent) : QScrollArea(parent) {
     setAcceptDrops(true);
     setAlignment(Qt::AlignCenter);
-    setStyleSheet("QScrollArea { background-color: #1e1e24; border: none; }");
+    setStyleSheet("QScrollArea { background-color: #1a1a22; border: none; }");
 
     m_canvas = new Canvas(this);
     setWidget(m_canvas);
@@ -162,14 +163,28 @@ void PdfViewer::Canvas::setHighlights(const std::vector<Element> &preview, const
     update();
 }
 
+void PdfViewer::setTheme(bool isDark) {
+    if (isDark) {
+        setStyleSheet("QScrollArea { background-color: #1a1a22; border: none; }");
+    } else {
+        setStyleSheet("QScrollArea { background-color: #e8ecf1; border: none; }");
+    }
+    m_canvas->setTheme(isDark);
+}
+
+void PdfViewer::Canvas::setTheme(bool isDark) {
+    m_isDark = isDark;
+    update();
+}
+
 void PdfViewer::Canvas::paintEvent(QPaintEvent *event) {
     Q_UNUSED(event);
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
     if (m_pageImage.isNull()) {
-        painter.setPen(QColor(180, 180, 190));
-        painter.drawText(rect(), Qt::AlignCenter, "暂无打开的 PDF 文档 / 拖拽 PDF 到此处打开");
+        painter.setPen(m_isDark ? QColor(160, 160, 175) : QColor(100, 116, 139));
+        painter.drawText(rect(), Qt::AlignCenter, tr_("drag_hint"));
         return;
     }
 
@@ -180,7 +195,7 @@ void PdfViewer::Canvas::paintEvent(QPaintEvent *event) {
     QRect pageRect(pageX, pageY, pageW, pageH);
 
     // Draw shadow
-    painter.fillRect(pageRect.adjusted(3, 3, 5, 5), QColor(0, 0, 0, 90));
+    painter.fillRect(pageRect.adjusted(3, 3, 5, 5), m_isDark ? QColor(0, 0, 0, 120) : QColor(0, 0, 0, 45));
 
     // Draw white paper base & page content
     painter.fillRect(pageRect, Qt::white);

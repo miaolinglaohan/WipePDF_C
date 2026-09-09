@@ -12,6 +12,7 @@
 #include <QTextEdit>
 #include <QListWidget>
 #include <QStackedWidget>
+#include <QGroupBox>
 #include <memory>
 #include "PdfViewer.h"
 #include "core/PdfDocument.h"
@@ -40,16 +41,21 @@ private slots:
     void onPreviewDetection();
     void onStartProcess();
     void onSwitchLanguage();
+    void onSwitchTheme();
     void onViewerPointClicked(int pageIdx, const QPointF &pdfPt);
     void onViewerPageChanged(int pageIdx, int totalPages);
     void onViewerFileDropped(const QString &filePath);
 
 private:
+    enum class Theme { Dark, Light };
+
     void setupUi();
     void setupStyles();
     void retranslateUi();
     void refreshInteractiveHighlights();
     void appendLog(const QString &msg);
+
+    Theme m_theme = Theme::Dark;
 
     // Core document & cleaner
     std::unique_ptr<PdfDocument> m_doc;
@@ -60,6 +66,7 @@ private:
 
     // UI Widgets
     QLabel *m_brandLabel = nullptr;
+    QPushButton *m_themeBtn = nullptr;
     QPushButton *m_langBtn = nullptr;
 
     // Top navigation
@@ -71,19 +78,18 @@ private:
     QPushButton *m_fitWidthBtn = nullptr;
 
     // Sidebar Widgets
-    QLabel *m_inputFrameTitle = nullptr;
+    QGroupBox *m_ioGroup = nullptr;
     QPushButton *m_choosePdfBtn = nullptr;
     QPushButton *m_chooseDirBtn = nullptr;
     QPushButton *m_closeDocBtn = nullptr;
     QLabel *m_inputPathLabel = nullptr;
 
-    QLabel *m_outputFrameTitle = nullptr;
     QRadioButton *m_saveAsRadio = nullptr;
     QRadioButton *m_overwriteRadio = nullptr;
     QLineEdit *m_outputDirEdit = nullptr;
     QPushButton *m_browseOutputBtn = nullptr;
 
-    QLabel *m_modeFrameTitle = nullptr;
+    QGroupBox *m_modeGroup = nullptr;
     QRadioButton *m_autoModeRadio = nullptr;
     QRadioButton *m_interactiveModeRadio = nullptr;
     QStackedWidget *m_modeStack = nullptr;
@@ -92,6 +98,7 @@ private:
     QCheckBox *m_chkLinks = nullptr;
     QLineEdit *m_linkRegexEdit = nullptr;
     QCheckBox *m_chkBottom = nullptr;
+    QLabel *m_bottomHeightLabel = nullptr;
     QSpinBox *m_bottomHeightSpin = nullptr;
     QCheckBox *m_chkText = nullptr;
     QLineEdit *m_textRegexEdit = nullptr;

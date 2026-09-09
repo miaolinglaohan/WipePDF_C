@@ -2,5 +2,7 @@
 <RCC version="1.0">
     <qresource prefix="/icons">
         <file>app.png</file>
+        <file>check_white.png</file>
+        <file>radio_dot_blue.png</file>
     </qresource>
 </RCC>
