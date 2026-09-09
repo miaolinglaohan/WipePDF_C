@@ -1,0 +1,23 @@
+# Build and dist outputs
+build/
+dist/
+*.obj
+*.pdb
+*.exp
+*.res
+*.tmp
+
+# Test artifacts
+test_output/
+test_input/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# IDE and metadata
+.vs/
+.vscode/
+*.user
+.DS_Store
+Thumbs.db
