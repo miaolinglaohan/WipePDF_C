@@ -53,8 +53,10 @@ std::vector<Element> WatermarkCleaner::previewAuto(const PdfDocument &doc, const
             all.insert(all.end(), textEls.begin(), textEls.end());
         }
         if (options.detectTransparentOverlays) {
-            auto overlays = Detectors::detectPatternOverlays(doc, p, options.transparentMinAreaRatio);
+            auto overlays = Detectors::detectTransparentOverlays(doc, p, options.transparentMinAreaRatio, options.transparentMaxOpacity);
             all.insert(all.end(), overlays.begin(), overlays.end());
+            auto patterns = Detectors::detectPatternOverlays(doc, p, 0.9f);
+            all.insert(all.end(), patterns.begin(), patterns.end());
         }
     }
     return all;
@@ -199,9 +201,22 @@ int WatermarkCleaner::applyAutoRules(PdfDocument &doc, const AutoOptions &option
             }
         }
 
-        // 4. Overlays / Full page pattern
+        // 4. Transparent overlays (low-alpha vector drawings) + full-page pattern fills
+        // 对齐 Python 版 _apply_auto_rules：
+        //   - ratio < 0.9 的透明覆盖层逐个 redact 删除（line_art 覆盖即删）
+        //   - 整页(ratio >= 0.9)的交给内容流图案填充清除（min_ratio=0.9）
         if (options.detectTransparentOverlays) {
-            count += ContentEdit::removeFullPagePatternFills(doc, p, options.transparentMinAreaRatio);
+            auto overlays = Detectors::detectTransparentOverlays(doc, p, options.transparentMinAreaRatio, options.transparentMaxOpacity);
+            for (const auto &el : overlays) {
+                if (el.rect_ratio >= 0.9f) continue;
+                doc.addRedaction(p, el.bbox);
+                doc.applyRedactions(p);
+                if (!doc.getTextInRect(p, el.bbox).trimmed().isEmpty()) {
+                    count += ContentEdit::removeTextInRegion(doc, p, el.bbox);
+                }
+                count++;
+            }
+            count += ContentEdit::removeFullPagePatternFills(doc, p, 0.9f);
         }
     }
 

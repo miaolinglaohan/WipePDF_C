@@ -74,7 +74,7 @@ void PdfViewer::fitWidth() {
 }
 
 void PdfViewer::setPreviewElements(const std::vector<Element> &elements) {
-    m_canvas->setHighlights(elements, m_canvas->findChildren<QObject*>().isEmpty() ? std::vector<Element>() : std::vector<Element>());
+    m_canvas->setHighlights(elements, {});
 }
 
 void PdfViewer::setInteractiveElements(const std::vector<Element> &elements) {

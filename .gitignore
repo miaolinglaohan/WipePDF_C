@@ -1,6 +1,7 @@
 # Build and dist outputs
 build/
 dist/
+release/
 *.obj
 *.pdb
 *.exp

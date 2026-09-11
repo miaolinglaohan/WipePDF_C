@@ -112,8 +112,51 @@ int main(int argc, char *argv[]) {
     assert(zhTitle == "清印 PDF");
     assert(enTitle == "WipePDF");
 
+    // Test 11: Transparent overlay detection (low-alpha vector drawing)
+    // 对齐 Python 版 detect_transparent_overlays：面积 >= 50% 且 opacity <= 0.35 且极简路径
+    {
+        PdfDocument ovDoc;
+        QString ovErr;
+        bool ovOk = ovDoc.open("test_input/overlay_test.pdf", &ovErr);
+        assert(ovOk);
+        auto overlays = Detectors::detectTransparentOverlays(ovDoc, 0, 0.5f, 0.35f);
+        std::cout << "[11] Transparent overlays detected: " << overlays.size() << std::endl;
+        for (const auto &o : overlays) {
+            std::cout << "     overlay bbox=" << o.bbox.x() << "," << o.bbox.y()
+                      << "," << o.bbox.width() << "x" << o.bbox.height()
+                      << " ratio=" << o.rect_ratio << " opacity=" << o.opacity << std::endl;
+        }
+        assert(overlays.size() == 1);
+        assert(std::abs(overlays[0].opacity - 0.25f) < 0.001f);
+        assert(overlays[0].rect_ratio >= 0.5f && overlays[0].rect_ratio < 0.9f);
+        assert(overlays[0].type == ElementType::Drawing);
+    }
+
+    // Test 12: 端到端——处理并验证透明覆盖层被真正删除
+    {
+        WatermarkCleaner ovCleaner;
+        AutoOptions ovOpts;
+        ovOpts.detectTransparentOverlays = true;
+        ovOpts.transparentMinAreaRatio = 0.5f;
+        ovOpts.transparentMaxOpacity = 0.35f;
+        CleanerResult ovRes = ovCleaner.process("test_input/overlay_test.pdf",
+                                                 "test_output/overlay_cleaned.pdf",
+                                                 ovOpts, false, false);
+        std::cout << "[12] Overlay clean result: " << (ovRes.success ? "SUCCESS" : "FAILED")
+                  << " | Removed: " << ovRes.removedCount << std::endl;
+        assert(ovRes.success);
+        assert(ovRes.removedCount >= 1);
+
+        PdfDocument checkDoc;
+        QString checkErr;
+        assert(checkDoc.open("test_output/overlay_cleaned.pdf", &checkErr));
+        auto remaining = Detectors::detectTransparentOverlays(checkDoc, 0, 0.5f, 0.35f);
+        std::cout << "     Overlay remaining after clean: " << remaining.size() << std::endl;
+        assert(remaining.empty());
+    }
+
     std::cout << "\n========================================" << std::endl;
-    std::cout << "  ALL 10 VERIFICATION TESTS PASSED 100% " << std::endl;
+    std::cout << "  ALL 12 VERIFICATION TESTS PASSED 100% " << std::endl;
     std::cout << "========================================" << std::endl;
     return 0;
 }
