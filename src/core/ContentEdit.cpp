@@ -47,6 +47,62 @@ static int countHexGlyphs(const QByteArray &hexTok, bool fourDigit) {
     return digits / 2;
 }
 
+static QString decodeLiteralString(const QByteArray &tok) {
+    if (tok.size() < 2) return QString();
+    QByteArray raw = tok.mid(1, tok.size() - 2);
+    QString res;
+    for (int i = 0; i < raw.size(); ++i) {
+        char c = raw.at(i);
+        if (c == '\\' && i + 1 < raw.size()) {
+            i++;
+            char next = raw.at(i);
+            if (next == 'n') res.append('\n');
+            else if (next == 'r') res.append('\r');
+            else if (next == 't') res.append('\t');
+            else if (next == 'b') res.append('\b');
+            else if (next == 'f') res.append('\f');
+            else if (next == '(') res.append('(');
+            else if (next == ')') res.append(')');
+            else if (next == '\\') res.append('\\');
+            else if (next >= '0' && next <= '7') {
+                int oct = next - '0';
+                if (i + 1 < raw.size() && raw.at(i + 1) >= '0' && raw.at(i + 1) <= '7') {
+                    oct = oct * 8 + (raw.at(++i) - '0');
+                    if (i + 1 < raw.size() && raw.at(i + 1) >= '0' && raw.at(i + 1) <= '7') {
+                        oct = oct * 8 + (raw.at(++i) - '0');
+                    }
+                }
+                res.append(QChar(oct));
+            } else {
+                res.append(QChar(next));
+            }
+        } else {
+            res.append(QChar(c));
+        }
+    }
+    return res;
+}
+
+static QString decodeHexString(const QByteArray &tok) {
+    if (tok.size() < 2) return QString();
+    QByteArray hex;
+    for (int i = 1; i < tok.size() - 1; ++i) {
+        char c = tok.at(i);
+        if (!QChar(c).isSpace()) hex.append(c);
+    }
+    if (hex.size() % 2 != 0) hex.append('0');
+    QByteArray bytes = QByteArray::fromHex(hex);
+    if (bytes.size() >= 2 && bytes.at(0) == '\0') {
+        QString s;
+        for (int i = 0; i + 1 < bytes.size(); i += 2) {
+            ushort u = (static_cast<uchar>(bytes.at(i)) << 8) | static_cast<uchar>(bytes.at(i + 1));
+            s.append(QChar(u));
+        }
+        return s;
+    }
+    return QString::fromLatin1(bytes);
+}
+
 std::vector<ContentSegment> ContentEdit::parseSegments(const QByteArray &data, bool fourDigitCids) {
     std::vector<ContentSegment> segments;
 
@@ -61,6 +117,7 @@ std::vector<ContentSegment> ContentEdit::parseSegments(const QByteArray &data, b
     int textStart = -1;
     Matrix tm;
     int glyphCount = 0;
+    QString currentText;
 
     struct LastRe {
         float x = 0, y = 0, w = 0, h = 0;
@@ -97,6 +154,7 @@ std::vector<ContentSegment> ContentEdit::parseSegments(const QByteArray &data, b
             tm = Matrix();
             glyphCount = 0;
             numBuf.clear();
+            currentText.clear();
             continue;
         }
         if (tok == "ET") {
@@ -108,10 +166,12 @@ std::vector<ContentSegment> ContentEdit::parseSegments(const QByteArray &data, b
                 seg.end = mEnd;
                 seg.glyphCount = glyphCount;
                 seg.pos = pos;
+                seg.text = currentText;
                 segments.push_back(seg);
             }
             inText = false;
             numBuf.clear();
+            currentText.clear();
             continue;
         }
         if (tok == "cm" && numBuf.size() >= 6) {
@@ -152,9 +212,18 @@ std::vector<ContentSegment> ContentEdit::parseSegments(const QByteArray &data, b
             continue;
         }
 
+        if (tok.startsWith('(') && tok.endsWith(')')) {
+            if (inText) {
+                currentText.append(decodeLiteralString(tok));
+            }
+            numBuf.clear();
+            continue;
+        }
+
         if (tok.startsWith('<') && tok.endsWith('>')) {
             if (inText) {
                 glyphCount += countHexGlyphs(tok, fourDigitCids);
+                currentText.append(decodeHexString(tok));
             }
             numBuf.clear();
             continue;
@@ -229,6 +298,53 @@ int ContentEdit::removeTextInRegion(PdfDocument &doc, int pageIdx, const QRectF 
     for (const auto &seg : segs) {
         if (seg.kind == ContentSegment::Kind::Text) {
             if (region.contains(seg.pos)) {
+                toRemove.push_back(seg);
+            }
+        }
+    }
+
+    if (toRemove.empty()) return 0;
+
+    QByteArray newStream = removeSegments(stream, toRemove);
+    doc.setPageContentStream(pageIdx, newStream);
+    return static_cast<int>(toRemove.size());
+}
+
+int ContentEdit::removeTextMatchingPattern(PdfDocument &doc, int pageIdx, const QString &regexPattern) {
+    if (regexPattern.isEmpty()) return 0;
+    QByteArray stream = doc.getPageContentStream(pageIdx);
+    if (stream.isEmpty()) return 0;
+
+    QRegularExpression re(regexPattern);
+    auto segs = parseSegments(stream);
+    std::vector<ContentSegment> toRemove;
+    for (const auto &seg : segs) {
+        if (seg.kind == ContentSegment::Kind::Text && !seg.text.isEmpty()) {
+            if (re.match(seg.text).hasMatch()) {
+                toRemove.push_back(seg);
+            }
+        }
+    }
+
+    if (toRemove.empty()) return 0;
+
+    QByteArray newStream = removeSegments(stream, toRemove);
+    doc.setPageContentStream(pageIdx, newStream);
+    return static_cast<int>(toRemove.size());
+}
+
+int ContentEdit::removeTextByContent(PdfDocument &doc, int pageIdx, const QString &targetText) {
+    if (targetText.isEmpty()) return 0;
+    QByteArray stream = doc.getPageContentStream(pageIdx);
+    if (stream.isEmpty()) return 0;
+
+    QString cleanTarget = targetText.trimmed();
+    auto segs = parseSegments(stream);
+    std::vector<ContentSegment> toRemove;
+    for (const auto &seg : segs) {
+        if (seg.kind == ContentSegment::Kind::Text && !seg.text.isEmpty()) {
+            QString segText = seg.text.trimmed();
+            if (!segText.isEmpty() && (segText.contains(cleanTarget) || cleanTarget.contains(segText))) {
                 toRemove.push_back(seg);
             }
         }

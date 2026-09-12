@@ -186,35 +186,41 @@ int WatermarkCleaner::applyAutoRules(PdfDocument &doc, const AutoOptions &option
 
         // 3. Text pattern
         if (options.removeByTextPattern && !options.textPattern.isEmpty()) {
-            auto matches = Detectors::detectByTextPattern(doc, p, options.textPattern);
-            for (const auto &el : matches) {
-                doc.addRedaction(p, el.bbox);
-                count++;
-            }
-            if (!matches.empty()) {
-                doc.applyRedactions(p);
-                for (const auto &el : matches) {
-                    if (!doc.getTextInRect(p, el.bbox).trimmed().isEmpty()) {
-                        ContentEdit::removeTextInRegion(doc, p, el.bbox);
-                    }
-                }
-            }
+            // Filter dedicated watermark streams
+            count += doc.filterPageContentStreams(p, [&](const QByteArray &data) {
+                if (data.size() > 10000) return false;
+                QRegularExpression re(options.textPattern);
+                return re.match(QString::fromLatin1(data)).hasMatch();
+            });
+            // Precise token-level text operator removal from content stream
+            count += ContentEdit::removeTextMatchingPattern(doc, p, options.textPattern);
         }
 
-        // 4. Transparent overlays (low-alpha vector drawings) + full-page pattern fills
-        // 对齐 Python 版 _apply_auto_rules：
-        //   - ratio < 0.9 的透明覆盖层逐个 redact 删除（line_art 覆盖即删）
-        //   - 整页(ratio >= 0.9)的交给内容流图案填充清除（min_ratio=0.9）
+        // 4. Transparent overlays (low-alpha vector drawings & transparent text) + full-page pattern fills
         if (options.detectTransparentOverlays) {
+            // First, filter dedicated pattern and transparent watermark streams in /Contents
+            count += doc.filterPageContentStreams(p, [&](const QByteArray &data) {
+                if (data.size() > 10000) return false;
+                if (data.contains("/Pattern cs") || data.contains("/Pattern CS")) return true;
+                if ((data.contains("gs") || data.contains("Tr")) && data.contains("BT") &&
+                    (data.contains("biaozhun") || data.contains(".org") || data.contains(".com") || data.contains(".cn") || data.contains(".net"))) {
+                    return true;
+                }
+                return false;
+            });
+
             auto overlays = Detectors::detectTransparentOverlays(doc, p, options.transparentMinAreaRatio, options.transparentMaxOpacity);
             for (const auto &el : overlays) {
-                if (el.rect_ratio >= 0.9f) continue;
-                doc.addRedaction(p, el.bbox);
-                doc.applyRedactions(p);
-                if (!doc.getTextInRect(p, el.bbox).trimmed().isEmpty()) {
-                    count += ContentEdit::removeTextInRegion(doc, p, el.bbox);
+                if (el.type == ElementType::Text) {
+                    if (!el.text.trimmed().isEmpty()) {
+                        count += ContentEdit::removeTextByContent(doc, p, el.text.trimmed());
+                    }
+                } else if (el.type == ElementType::Drawing) {
+                    if (el.rect_ratio >= 0.9f) continue;
+                    doc.addRedaction(p, el.bbox);
+                    doc.applyRedactions(p);
+                    count++;
                 }
-                count++;
             }
             count += ContentEdit::removeFullPagePatternFills(doc, p, 0.9f);
         }
@@ -256,15 +262,41 @@ bool WatermarkCleaner::removeElement(PdfDocument &doc, int pageIdx, const Elemen
     }
 
     if (el.type == ElementType::Drawing && el.extra.value("pattern_fill").toBool()) {
-        return ContentEdit::removeFullPagePatternFills(doc, pageIdx, 0.5f) > 0;
+        int removed = doc.filterPageContentStreams(pageIdx, [](const QByteArray &data) {
+            return data.size() < 10000 && (data.contains("/Pattern cs") || data.contains("/Pattern CS"));
+        });
+        removed += ContentEdit::removeFullPagePatternFills(doc, pageIdx, 0.5f);
+        return removed > 0;
     }
 
-    // Text or generic Drawing
+    if (el.type == ElementType::Text) {
+        int removed = 0;
+        if (!el.text.isEmpty()) {
+            // 1. Filter dedicated stream if present
+            removed += doc.filterPageContentStreams(pageIdx, [&](const QByteArray &data) {
+                if (data.size() > 10000) return false;
+                return data.contains(el.text.toLatin1());
+            });
+
+            // 2. Remove matching text from content stream
+            removed += ContentEdit::removeTextByContent(doc, pageIdx, el.text.trimmed());
+        }
+
+        // Fallback: ONLY if the bounding box has NO other text except this element
+        if (removed == 0) {
+            QString boxText = doc.getTextInRect(pageIdx, el.bbox).trimmed();
+            if (!boxText.isEmpty() && boxText == el.text.trimmed()) {
+                doc.addRedaction(pageIdx, el.bbox);
+                doc.applyRedactions(pageIdx);
+                removed++;
+            }
+        }
+        return removed > 0;
+    }
+
+    // Generic Drawing
     doc.addRedaction(pageIdx, el.bbox);
     doc.applyRedactions(pageIdx);
-    if (el.type == ElementType::Text && !doc.getTextInRect(pageIdx, el.bbox).trimmed().isEmpty()) {
-        ContentEdit::removeTextInRegion(doc, pageIdx, el.bbox);
-    }
     return true;
 }
 

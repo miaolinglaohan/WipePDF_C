@@ -5,6 +5,7 @@
 #include <QImage>
 #include <vector>
 #include <memory>
+#include <functional>
 #include "Element.h"
 
 #include <mupdf/fitz.h>
@@ -61,6 +62,7 @@ public:
     // Raw content stream access
     QByteArray getPageContentStream(int pageIdx) const;
     bool setPageContentStream(int pageIdx, const QByteArray &bytes);
+    int filterPageContentStreams(int pageIdx, const std::function<bool(const QByteArray &streamData)> &shouldRemoveStream);
 
     // Save
     bool save(const QString &outputPath, int garbage = 4, bool deflate = true, bool clean = true, QString *errorMsg = nullptr);

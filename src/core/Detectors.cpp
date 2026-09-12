@@ -15,6 +15,7 @@ struct DrawingOp {
     float alpha = 1.0f;
     bool rectLike = false; // 路径含 're' 或贝塞尔 'c' 段（PyMuPDF is_rect_like）
     bool isText = false;   // 是否为文本绘制
+    QString text;
 };
 
 struct PathShape {
@@ -89,6 +90,22 @@ void ovClose(fz_context *, fz_device *) {}
 void ovDrop(fz_context *, fz_device *) {}
 void ovClipPath(fz_context *, fz_device *, const fz_path *, int, fz_matrix, fz_rect) {}
 void ovClipStrokePath(fz_context *, fz_device *, const fz_path *, const fz_stroke_state *, fz_matrix, fz_rect) {}
+static QString extractTextFromFzText(const fz_text *text) {
+    if (!text) return QString();
+    QString str;
+    for (fz_text_span *span = text->head; span; span = span->next) {
+        for (int i = 0; i < span->len; ++i) {
+            int ucs = span->items[i].ucs;
+            if (ucs > 0) {
+                str.append(QChar(ucs));
+            } else if (span->items[i].cid >= 32 && span->items[i].cid < 127) {
+                str.append(QChar(span->items[i].cid));
+            }
+        }
+    }
+    return str;
+}
+
 void ovFillText(fz_context *ctx, fz_device *dev, const fz_text *text, fz_matrix ctm,
                 fz_colorspace *cs, const float *color, float alpha, fz_color_params color_params)
 {
@@ -98,6 +115,7 @@ void ovFillText(fz_context *ctx, fz_device *dev, const fz_text *text, fz_matrix 
     op.alpha = alpha;
     op.rectLike = true;
     op.isText = true;
+    op.text = extractTextFromFzText(text);
     reinterpret_cast<OverlayDevice *>(dev)->ops->push_back(op);
 }
 
@@ -110,6 +128,7 @@ void ovStrokeText(fz_context *ctx, fz_device *dev, const fz_text *text, const fz
     op.alpha = alpha;
     op.rectLike = true;
     op.isText = true;
+    op.text = extractTextFromFzText(text);
     reinterpret_cast<OverlayDevice *>(dev)->ops->push_back(op);
 }
 void ovClipText(fz_context *, fz_device *, const fz_text *, fz_matrix, fz_rect) {}
@@ -307,7 +326,7 @@ std::vector<Element> Detectors::detectTransparentOverlays(const PdfDocument &doc
         el.rect_ratio = ratio;
         el.extra["transparent_overlay"] = true;
         if (op.isText) {
-            el.text = doc.getTextInRect(pageIdx, el.bbox);
+            el.text = op.text.isEmpty() ? doc.getTextInRect(pageIdx, el.bbox).trimmed() : op.text.trimmed();
             el.extra["transparent_text"] = true;
         }
         elements.push_back(el);

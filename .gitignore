@@ -11,6 +11,7 @@ release/
 # Test artifacts
 test_output/
 test_input/
+scratch/
 
 # Python caches
 __pycache__/

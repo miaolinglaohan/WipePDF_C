@@ -45,6 +45,9 @@ target_link_libraries(test_core PRIVATE wipepdf_core)
 add_executable(test_img src/test_img.cpp)
 target_link_libraries(test_img PRIVATE wipepdf_core)
 
+add_executable(test_gb src/test_gb.cpp)
+target_link_libraries(test_gb PRIVATE wipepdf_core)
+
 add_custom_command(TARGET test_core POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
     "${MUPDF_DIR}/bin/mupdfcpp64.dll"
