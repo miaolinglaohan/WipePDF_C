@@ -36,7 +36,7 @@ I18n::I18n() {
     m_zh["opt_bottom_height"] = "底部高度 (pt):";
     m_zh["label_height"] = "高度 (pt):";
     m_zh["opt_text_regex"] = "按文本正则清除:";
-    m_zh["default_text_regex"] = "水印|www\\..*?\\.com";
+    m_zh["default_text_regex"] = "水印|https?://\\S+|www\\.\\S+|(?:[a-zA-Z0-9-]+\\.)+(?:com|net|org|cn|cc|top|xyz|site|vip|club)\\b";
     m_zh["text_regex_placeholder"] = "文本匹配正则，如 水印|广告";
     m_zh["opt_detect_overlays"] = "检测并清除透明覆盖层 / Pattern 图案";
     m_zh["interactive_panel"] = "交互点选控制";
@@ -116,7 +116,7 @@ I18n::I18n() {
     m_en["opt_bottom_height"] = "Strip height (pt):";
     m_en["label_height"] = "Height (pt):";
     m_en["opt_text_regex"] = "Remove text matching regex:";
-    m_en["default_text_regex"] = "watermark|www\\..*?\\.com";
+    m_en["default_text_regex"] = "watermark|https?://\\S+|www\\.\\S+|(?:[a-zA-Z0-9-]+\\.)+(?:com|net|org|cn|cc|top|xyz|site|vip|club)\\b";
     m_en["text_regex_placeholder"] = "Text regex, e.g. watermark|ad";
     m_en["opt_detect_overlays"] = "Detect & clear transparent overlays / patterns";
     m_en["interactive_panel"] = "Interactive Controls";

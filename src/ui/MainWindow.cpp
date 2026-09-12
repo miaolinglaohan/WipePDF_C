@@ -168,6 +168,7 @@ void MainWindow::setupUi() {
     autoLayout->setContentsMargins(0, 8, 0, 0);
 
     m_chkLinks = new QCheckBox(this);
+    m_chkLinks->setChecked(true);
     m_linkRegexEdit = new QLineEdit(this);
 
     m_chkBottom = new QCheckBox(this);
@@ -182,10 +183,12 @@ void MainWindow::setupUi() {
     bottomRow->addWidget(m_bottomHeightSpin);
 
     m_chkText = new QCheckBox(this);
+    m_chkText->setChecked(true);
     m_textRegexEdit = new QLineEdit(this);
-    m_textRegexEdit->setText("水印|www\\..*?\\.com");
+    m_textRegexEdit->setText("水印|https?://\\S+|www\\.\\S+|(?:[a-zA-Z0-9-]+\\.)+(?:com|net|org|cn|cc|top|xyz|site|vip|club)\\b");
 
     m_chkOverlays = new QCheckBox(this);
+    m_chkOverlays->setChecked(true);
 
     autoLayout->addWidget(m_chkLinks);
     autoLayout->addWidget(m_linkRegexEdit);
@@ -616,7 +619,8 @@ void MainWindow::retranslateUi() {
 
     // Default text regex
     QString currentRegex = m_textRegexEdit->text().trimmed();
-    if (currentRegex.isEmpty() || currentRegex == "水印|www\\..*?\\.com" || currentRegex == "watermark|www\\..*?\\.com") {
+    if (currentRegex.isEmpty() || currentRegex == "水印|www\\..*?\\.com" || currentRegex == "watermark|www\\..*?\\.com" ||
+        currentRegex.startsWith("水印|https?://") || currentRegex.startsWith("watermark|https?://")) {
         m_textRegexEdit->setText(tr_("default_text_regex"));
     }
 

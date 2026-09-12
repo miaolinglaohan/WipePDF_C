@@ -439,24 +439,47 @@ QByteArray PdfDocument::getPageContentStream(int pageIdx) const {
         return QByteArray();
     }
 
-    fz_buffer *buf = nullptr;
-    fz_try(m_ctx) {
-        buf = pdf_load_stream(m_ctx, contents);
-    } fz_catch(m_ctx) {
-        buf = nullptr;
+    QByteArray result;
+    if (pdf_is_array(m_ctx, contents)) {
+        int n = pdf_array_len(m_ctx, contents);
+        for (int i = 0; i < n; ++i) {
+            pdf_obj *item = pdf_array_get(m_ctx, contents, i);
+            fz_buffer *buf = nullptr;
+            fz_try(m_ctx) {
+                buf = pdf_load_stream(m_ctx, item);
+            } fz_catch(m_ctx) {
+                buf = nullptr;
+            }
+            if (buf) {
+                unsigned char *data = nullptr;
+                size_t len = fz_buffer_storage(m_ctx, buf, &data);
+                if (data && len > 0) {
+                    if (!result.isEmpty()) result.append("\n");
+                    result.append(reinterpret_cast<const char *>(data), static_cast<int>(len));
+                }
+                fz_drop_buffer(m_ctx, buf);
+            }
+        }
+    } else {
+        fz_buffer *buf = nullptr;
+        fz_try(m_ctx) {
+            buf = pdf_load_stream(m_ctx, contents);
+        } fz_catch(m_ctx) {
+            buf = nullptr;
+        }
+
+        if (buf) {
+            unsigned char *data = nullptr;
+            size_t len = fz_buffer_storage(m_ctx, buf, &data);
+            if (data && len > 0) {
+                result = QByteArray(reinterpret_cast<const char *>(data), static_cast<int>(len));
+            }
+            fz_drop_buffer(m_ctx, buf);
+        }
     }
 
-    QByteArray bytes;
-    if (buf) {
-        unsigned char *data = nullptr;
-        size_t len = fz_buffer_storage(m_ctx, buf, &data);
-        if (data && len > 0) {
-            bytes = QByteArray(reinterpret_cast<const char *>(data), static_cast<int>(len));
-        }
-        fz_drop_buffer(m_ctx, buf);
-    }
     pdf_drop_page(m_ctx, page);
-    return bytes;
+    return result;
 }
 
 bool PdfDocument::setPageContentStream(int pageIdx, const QByteArray &bytes) {
@@ -477,7 +500,23 @@ bool PdfDocument::setPageContentStream(int pageIdx, const QByteArray &bytes) {
         return false;
     }
 
-    pdf_update_stream(m_ctx, m_pdfDoc, contents, buf, 0);
+    if (pdf_is_array(m_ctx, contents)) {
+        int n = pdf_array_len(m_ctx, contents);
+        if (n > 0) {
+            pdf_obj *firstItem = pdf_array_get(m_ctx, contents, 0);
+            pdf_update_stream(m_ctx, m_pdfDoc, firstItem, buf, 0);
+            // Clear remaining streams in array so they don't produce leftover content
+            for (int i = 1; i < n; ++i) {
+                pdf_obj *otherItem = pdf_array_get(m_ctx, contents, i);
+                fz_buffer *emptyBuf = fz_new_buffer(m_ctx, 0);
+                pdf_update_stream(m_ctx, m_pdfDoc, otherItem, emptyBuf, 0);
+                fz_drop_buffer(m_ctx, emptyBuf);
+            }
+        }
+    } else {
+        pdf_update_stream(m_ctx, m_pdfDoc, contents, buf, 0);
+    }
+
     fz_drop_buffer(m_ctx, buf);
     pdf_drop_page(m_ctx, page);
     return true;

@@ -14,6 +14,7 @@ struct DrawingOp {
     fz_rect bbox;
     float alpha = 1.0f;
     bool rectLike = false; // 路径含 're' 或贝塞尔 'c' 段（PyMuPDF is_rect_like）
+    bool isText = false;   // 是否为文本绘制
 };
 
 struct PathShape {
@@ -88,8 +89,29 @@ void ovClose(fz_context *, fz_device *) {}
 void ovDrop(fz_context *, fz_device *) {}
 void ovClipPath(fz_context *, fz_device *, const fz_path *, int, fz_matrix, fz_rect) {}
 void ovClipStrokePath(fz_context *, fz_device *, const fz_path *, const fz_stroke_state *, fz_matrix, fz_rect) {}
-void ovFillText(fz_context *, fz_device *, const fz_text *, fz_matrix, fz_colorspace *, const float *, float, fz_color_params) {}
-void ovStrokeText(fz_context *, fz_device *, const fz_text *, const fz_stroke_state *, fz_matrix, fz_colorspace *, const float *, float, fz_color_params) {}
+void ovFillText(fz_context *ctx, fz_device *dev, const fz_text *text, fz_matrix ctm,
+                fz_colorspace *cs, const float *color, float alpha, fz_color_params color_params)
+{
+    (void)cs; (void)color; (void)color_params;
+    DrawingOp op;
+    op.bbox = fz_bound_text(ctx, text, NULL, ctm);
+    op.alpha = alpha;
+    op.rectLike = true;
+    op.isText = true;
+    reinterpret_cast<OverlayDevice *>(dev)->ops->push_back(op);
+}
+
+void ovStrokeText(fz_context *ctx, fz_device *dev, const fz_text *text, const fz_stroke_state *stroke,
+                  fz_matrix ctm, fz_colorspace *cs, const float *color, float alpha, fz_color_params color_params)
+{
+    (void)cs; (void)color; (void)color_params;
+    DrawingOp op;
+    op.bbox = fz_bound_text(ctx, text, stroke, ctm);
+    op.alpha = alpha;
+    op.rectLike = true;
+    op.isText = true;
+    reinterpret_cast<OverlayDevice *>(dev)->ops->push_back(op);
+}
 void ovClipText(fz_context *, fz_device *, const fz_text *, fz_matrix, fz_rect) {}
 void ovClipStrokeText(fz_context *, fz_device *, const fz_text *, const fz_stroke_state *, fz_matrix, fz_rect) {}
 void ovIgnoreText(fz_context *, fz_device *, const fz_text *, fz_matrix) {}
@@ -271,15 +293,23 @@ std::vector<Element> Detectors::detectTransparentOverlays(const PdfDocument &doc
         float area = (inter.x1 - inter.x0) * (inter.y1 - inter.y0);
         if (area <= 0.0f) continue;
         float ratio = area / pArea;
-        if (ratio < minAreaRatio) continue;
+
+        // 对于低透明度矢量背景覆盖层，要求 ratio >= minAreaRatio（避免误伤常规微小线条）
+        // 对于完全透明/低透明度的文字（如水印超链），不设苛刻面积下限（只要具有有效区域）
+        if (!op.isText && ratio < minAreaRatio) continue;
+        if (op.isText && ratio < 0.0005f) continue;
 
         Element el;
-        el.type = ElementType::Drawing;
+        el.type = op.isText ? ElementType::Text : ElementType::Drawing;
         el.page = pageIdx;
         el.bbox = QRectF(op.bbox.x0, op.bbox.y0, op.bbox.x1 - op.bbox.x0, op.bbox.y1 - op.bbox.y0);
         el.opacity = op.alpha;
         el.rect_ratio = ratio;
         el.extra["transparent_overlay"] = true;
+        if (op.isText) {
+            el.text = doc.getTextInRect(pageIdx, el.bbox);
+            el.extra["transparent_text"] = true;
+        }
         elements.push_back(el);
     }
     return elements;
