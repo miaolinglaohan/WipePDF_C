@@ -11,6 +11,9 @@ I18n::I18n() {
     // Chinese translations
     m_zh["app_title"] = "清印 PDF - 顽固水印/链接清除工具";
     m_zh["app_brand"] = "清印 PDF";
+    m_zh["suspects_scanning"] = "正在雷达扫描高危频次...";
+    m_zh["suspects_found"] = "🔥 高危频次推荐 (%1)";
+    m_zh["tip_double_click_kill"] = "双击一键锁定此嫌疑对象";
     m_zh["ready"] = "就绪";
     m_zh["input_frame"] = "输入与输出设置";
     m_zh["btn_choose_pdf"] = "打开单文件";
@@ -42,6 +45,7 @@ I18n::I18n() {
     m_zh["interactive_panel"] = "交互点选控制";
     m_zh["match_mode_label"] = "匹配维度:";
     m_zh["match_auto"] = "智能综合";
+    m_zh["match_fingerprint"] = "指纹识别(高精)";
     m_zh["match_position"] = "按页面相对位置";
     m_zh["match_region"] = "按固定区域矩形";
     m_zh["match_text"] = "按文本内容";
@@ -90,7 +94,10 @@ I18n::I18n() {
 
     // English translations
     m_en["app_title"] = "WipePDF - Stubborn Watermark & Link Remover";
-    m_en["app_brand"] = "WipePDF";
+    m_en["app_brand"] = "Wipe PDF";
+    m_en["suspects_scanning"] = "Scanning for high-frequency suspects...";
+    m_en["suspects_found"] = "🔥 High-frequency Suspects (%1)";
+    m_en["tip_double_click_kill"] = "Double-click to lock and kill this suspect";
     m_en["ready"] = "Ready";
     m_en["input_frame"] = "Input & Output Settings";
     m_en["btn_choose_pdf"] = "Open PDF";
@@ -122,6 +129,7 @@ I18n::I18n() {
     m_en["interactive_panel"] = "Interactive Controls";
     m_en["match_mode_label"] = "Match By:";
     m_en["match_auto"] = "Smart Auto";
+    m_en["match_fingerprint"] = "Fingerprint (Precise)";
     m_en["match_position"] = "Relative Position";
     m_en["match_region"] = "Fixed Region Rect";
     m_en["match_text"] = "Text Content";

@@ -32,6 +32,10 @@ MainWindow::MainWindow(QWidget *parent)
             appendLog(msg);
         });
     });
+
+    // Frequency Scanner
+    connect(&m_freqScanWatcher, &QFutureWatcher<std::unordered_map<size_t, wipepdf::Detectors::FrequencyResult>>::finished,
+            this, &MainWindow::onFrequenciesAnalyzed);
 }
 
 MainWindow::~MainWindow() = default;
@@ -231,6 +235,14 @@ void MainWindow::setupUi() {
     ruleBtnRow->addWidget(m_clearRulesBtn);
     interactiveLayout->addLayout(ruleBtnRow);
 
+    m_suspectsLabel = new QLabel(this);
+    m_suspectsLabel->setStyleSheet("color: #ff7b72; font-weight: bold; margin-top: 8px;");
+    interactiveLayout->addWidget(m_suspectsLabel);
+
+    m_suspectsListWidget = new QListWidget(this);
+    m_suspectsListWidget->setFixedHeight(100);
+    interactiveLayout->addWidget(m_suspectsListWidget);
+
     m_modeStack->addWidget(interactivePage);
     modeGroupLayout->addWidget(m_modeStack);
     sideLayout->addWidget(m_modeGroup);
@@ -293,6 +305,8 @@ void MainWindow::setupUi() {
     connect(m_viewer, &PdfViewer::pageChanged, this, &MainWindow::onViewerPageChanged);
     connect(m_viewer, &PdfViewer::pointClicked, this, &MainWindow::onViewerPointClicked);
     connect(m_viewer, &PdfViewer::fileDropped, this, &MainWindow::onViewerFileDropped);
+    
+    connect(m_suspectsListWidget, &QListWidget::itemDoubleClicked, this, &MainWindow::onSuspectDoubleClicked);
 }
 
 void MainWindow::setupStyles() {
@@ -584,8 +598,8 @@ void MainWindow::onSwitchTheme() {
 }
 
 void MainWindow::retranslateUi() {
-    setWindowTitle(tr_("app_title"));
-    m_brandLabel->setText(tr_("app_brand"));
+    setWindowTitle(tr_("app_title") + " v2.1.0");
+    m_brandLabel->setText(tr_("app_brand") + " v2.1.0");
 
     // Group box headers
     m_ioGroup->setTitle(tr_("input_frame"));
@@ -639,6 +653,7 @@ void MainWindow::retranslateUi() {
     m_matchModeCombo->blockSignals(true);
     m_matchModeCombo->clear();
     m_matchModeCombo->addItem(tr_("match_auto"), "auto");
+    m_matchModeCombo->addItem(tr_("match_fingerprint"), "fingerprint");
     m_matchModeCombo->addItem(tr_("match_position"), "position");
     m_matchModeCombo->addItem(tr_("match_region"), "region");
     m_matchModeCombo->addItem(tr_("match_text"), "text");
@@ -652,6 +667,10 @@ void MainWindow::retranslateUi() {
     m_clearRulesBtn->setText(tr_("btn_clear_rules"));
     m_interactiveHint->setText(tr_("hint_interactive"));
     m_rulesCountLabel->setText(tr_("rules_count").arg(m_cleaner.interactiveRules().size()));
+
+    if (!m_freqScanWatcher.isRunning()) {
+        m_suspectsLabel->setText(tr_("suspects_found").arg(m_suspectsListWidget->count()));
+    }
 
     m_previewBtn->setText(tr_("btn_preview"));
     m_processBtn->setText(tr_("btn_process"));
@@ -697,9 +716,20 @@ void MainWindow::openPdf(const QString &filePath) {
     m_viewer->setDocument(m_doc.get());
     m_statusLabel->setText(tr_("ready"));
     appendLog(tr_("log_doc_loaded").arg(filePath).arg(m_doc->pageCount()));
+
+    // Start Frequency Analysis
+    m_suspectsListWidget->clear();
+    m_suspectsLabel->setText(tr_("suspects_scanning"));
+    QFuture<std::unordered_map<size_t, wipepdf::Detectors::FrequencyResult>> future = QtConcurrent::run([this]() {
+        return wipepdf::Detectors::analyzeDocumentFrequencies(*m_doc);
+    });
+    m_freqScanWatcher.setFuture(future);
 }
 
 void MainWindow::closePdf() {
+    if (m_freqScanWatcher.isRunning()) {
+        m_freqScanWatcher.waitForFinished();
+    }
     m_viewer->clear();
     if (m_doc && m_doc->isOpen()) {
         m_doc->close();
@@ -797,11 +827,23 @@ void MainWindow::onViewerPointClicked(int pageIdx, const QPointF &pdfPt) {
         QMenu menu(this);
         for (size_t i = 0; i < picked.size(); ++i) {
             auto *act = menu.addAction(picked[i].summary());
-            act->setData(static_cast<int>(i));
+            connect(act, &QAction::triggered, this, [this, picked, i, pageIdx]() {
+                Element target = picked[i];
+                QString mode = m_matchModeCombo->currentData().toString();
+                if (mode.isEmpty() || mode == "auto") {
+                    mode = "fingerprint";
+                }
+                wipepdf::MatchRule rule = wipepdf::Matcher::createRuleFromElement(*m_doc, pageIdx, target, mode, 0.05f);
+                m_cleaner.addInteractiveRule(rule);
+                QString ruleText = rule.describe();
+                m_rulesListWidget->addItem(ruleText);
+                m_rulesCountLabel->setText(tr_("rules_count").arg(m_cleaner.interactiveRules().size()));
+                refreshInteractiveHighlights();
+                appendLog(tr_("log_rule_added").arg(ruleText));
+            });
         }
-        QAction *chosen = menu.exec(QCursor::pos());
-        if (!chosen) return;
-        targetElement = picked[chosen->data().toInt()];
+        menu.exec(QCursor::pos());
+        return;
     }
 
     QString mode = m_matchModeCombo->currentData().toString();
@@ -910,6 +952,54 @@ void MainWindow::onStartProcess() {
 
 void MainWindow::appendLog(const QString &msg) {
     m_logEdit->append(msg);
+}
+
+void MainWindow::onFrequenciesAnalyzed() {
+    m_lastFrequencies = m_freqScanWatcher.result();
+    m_suspectsListWidget->clear();
+    
+    std::vector<std::pair<size_t, wipepdf::Detectors::FrequencyResult>> sorted;
+    for (const auto &pair : m_lastFrequencies) {
+        if (pair.second.count >= 2) {
+            sorted.push_back(pair);
+        }
+    }
+    
+    std::sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) {
+        return a.second.count > b.second.count;
+    });
+    
+    for (const auto &pair : sorted) {
+        QString typeStr = elementTypeToString(pair.second.sample.type);
+        QString text = pair.second.sample.text.trimmed();
+        if (text.length() > 15) text = text.left(15) + "...";
+        QString label = QString("[%1] %2x ").arg(typeStr).arg(pair.second.count);
+        if (!text.isEmpty()) label += QString("\"%1\"").arg(text);
+        else label += QString("(Hash: %1)").arg(pair.first);
+        
+        auto *item = new QListWidgetItem(label, m_suspectsListWidget);
+        item->setData(Qt::UserRole, QVariant::fromValue(static_cast<qulonglong>(pair.first)));
+        item->setToolTip(tr_("tip_double_click_kill"));
+    }
+    
+    m_suspectsLabel->setText(tr_("suspects_found").arg(sorted.size()));
+}
+
+void MainWindow::onSuspectDoubleClicked(QListWidgetItem *item) {
+    size_t hash = static_cast<size_t>(item->data(Qt::UserRole).toULongLong());
+    auto it = m_lastFrequencies.find(hash);
+    if (it == m_lastFrequencies.end()) return;
+    
+    Element sample = it->second.sample;
+    MatchRule rule = Matcher::createRuleFromElement(*m_doc, sample.page, sample, "fingerprint", 0.05f);
+    m_cleaner.addInteractiveRule(rule);
+    
+    QString ruleText = rule.describe();
+    m_rulesListWidget->addItem(ruleText);
+    m_rulesCountLabel->setText(tr_("rules_count").arg(m_cleaner.interactiveRules().size()));
+    
+    refreshInteractiveHighlights();
+    appendLog(tr_("log_rule_added").arg(ruleText));
 }
 
 } // namespace wipepdf

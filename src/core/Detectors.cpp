@@ -411,4 +411,35 @@ std::vector<Element> Detectors::pickElementAt(const PdfDocument &doc, int pageId
     return candidates;
 }
 
+std::unordered_map<size_t, Detectors::FrequencyResult> Detectors::analyzeDocumentFrequencies(const PdfDocument &doc) {
+    std::unordered_map<size_t, FrequencyResult> freqMap;
+    int pageCount = doc.pageCount();
+    
+    // To avoid excessive scanning time on huge PDFs, we could sample pages.
+    // For now, scan all pages but only fast detectors (Images, Texts, Links)
+    for (int i = 0; i < pageCount; ++i) {
+        auto images = detectImages(doc, i);
+        for (const auto &el : images) {
+            size_t h = el.hash();
+            freqMap[h].count++;
+            if (freqMap[h].count == 1) freqMap[h].sample = el;
+        }
+        
+        auto textBlocks = detectTextBlocks(doc, i);
+        for (const auto &el : textBlocks) {
+            size_t h = el.hash();
+            freqMap[h].count++;
+            if (freqMap[h].count == 1) freqMap[h].sample = el;
+        }
+        
+        auto links = detectLinks(doc, i);
+        for (const auto &el : links) {
+            size_t h = el.hash();
+            freqMap[h].count++;
+            if (freqMap[h].count == 1) freqMap[h].sample = el;
+        }
+    }
+    return freqMap;
+}
+
 } // namespace wipepdf

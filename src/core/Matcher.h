@@ -19,6 +19,7 @@ struct MatchRule {
     float positionTolerance = 0.05f;
     float minRectRatio = 0.0f;
     float maxRectRatio = 1.0f;
+    size_t targetHash = 0; // For fingerprint matching
     QString mode = "auto";
 
     QString describe() const {

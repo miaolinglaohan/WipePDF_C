@@ -110,8 +110,12 @@ std::vector<ContentSegment> ContentEdit::parseSegments(const QByteArray &data, b
         "([+-]?\\d+(?:\\.\\d+)?)|(<[0-9A-Fa-f\\s]*>)|(\\((?:\\\\.|[^()\\\\])*\\))|([A-Za-z*'\"/]+)|([<>\\[\\]{}])"
     );
 
-    Matrix ctm;
-    std::vector<Matrix> stack;
+    struct GState {
+        Matrix ctm;
+        int tr = 0;
+    };
+    GState currentState;
+    std::vector<GState> stack;
     std::vector<float> numBuf;
     bool inText = false;
     int textStart = -1;
@@ -136,13 +140,13 @@ std::vector<ContentSegment> ContentEdit::parseSegments(const QByteArray &data, b
         int mEnd = static_cast<int>(m.capturedEnd(0));
 
         if (tok == "q") {
-            stack.push_back(ctm);
+            stack.push_back(currentState);
             numBuf.clear();
             continue;
         }
         if (tok == "Q") {
             if (!stack.empty()) {
-                ctm = stack.back();
+                currentState = stack.back();
                 stack.pop_back();
             }
             numBuf.clear();
@@ -159,7 +163,7 @@ std::vector<ContentSegment> ContentEdit::parseSegments(const QByteArray &data, b
         }
         if (tok == "ET") {
             if (inText && textStart >= 0) {
-                QPointF pos = ctm.apply(tm.e, tm.f);
+                QPointF pos = currentState.ctm.apply(tm.e, tm.f);
                 ContentSegment seg;
                 seg.kind = ContentSegment::Kind::Text;
                 seg.start = textStart;
@@ -167,6 +171,7 @@ std::vector<ContentSegment> ContentEdit::parseSegments(const QByteArray &data, b
                 seg.glyphCount = glyphCount;
                 seg.pos = pos;
                 seg.text = currentText;
+                seg.renderMode = currentState.tr;
                 segments.push_back(seg);
             }
             inText = false;
@@ -177,7 +182,12 @@ std::vector<ContentSegment> ContentEdit::parseSegments(const QByteArray &data, b
         if (tok == "cm" && numBuf.size() >= 6) {
             size_t n = numBuf.size();
             Matrix mcm = {numBuf[n-6], numBuf[n-5], numBuf[n-4], numBuf[n-3], numBuf[n-2], numBuf[n-1]};
-            ctm = Matrix::multiply(ctm, mcm);
+            currentState.ctm = Matrix::multiply(currentState.ctm, mcm);
+            numBuf.clear();
+            continue;
+        }
+        if (tok == "Tr" && !numBuf.empty()) {
+            currentState.tr = static_cast<int>(numBuf.back());
             numBuf.clear();
             continue;
         }
@@ -189,7 +199,7 @@ std::vector<ContentSegment> ContentEdit::parseSegments(const QByteArray &data, b
         }
         if (tok == "re" && numBuf.size() >= 4) {
             size_t n = numBuf.size();
-            lastRe = {numBuf[n-4], numBuf[n-3], numBuf[n-2], numBuf[n-1], ctm, mStart};
+            lastRe = {numBuf[n-4], numBuf[n-3], numBuf[n-2], numBuf[n-1], currentState.ctm, mStart};
             numBuf.clear();
             continue;
         }
@@ -297,6 +307,7 @@ int ContentEdit::removeTextInRegion(PdfDocument &doc, int pageIdx, const QRectF 
     std::vector<ContentSegment> toRemove;
     for (const auto &seg : segs) {
         if (seg.kind == ContentSegment::Kind::Text) {
+            if (seg.renderMode == 3) continue; // Protect OCR text
             if (region.contains(seg.pos)) {
                 toRemove.push_back(seg);
             }
@@ -320,6 +331,7 @@ int ContentEdit::removeTextMatchingPattern(PdfDocument &doc, int pageIdx, const 
     std::vector<ContentSegment> toRemove;
     for (const auto &seg : segs) {
         if (seg.kind == ContentSegment::Kind::Text && !seg.text.isEmpty()) {
+            if (seg.renderMode == 3) continue; // Protect OCR text
             if (re.match(seg.text).hasMatch()) {
                 toRemove.push_back(seg);
             }
@@ -343,6 +355,7 @@ int ContentEdit::removeTextByContent(PdfDocument &doc, int pageIdx, const QStrin
     std::vector<ContentSegment> toRemove;
     for (const auto &seg : segs) {
         if (seg.kind == ContentSegment::Kind::Text && !seg.text.isEmpty()) {
+            if (seg.renderMode == 3) continue; // Protect OCR text
             QString segText = seg.text.trimmed();
             if (!segText.isEmpty() && (segText.contains(cleanTarget) || cleanTarget.contains(segText))) {
                 toRemove.push_back(seg);

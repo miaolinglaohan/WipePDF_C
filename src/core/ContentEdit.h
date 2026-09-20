@@ -17,6 +17,7 @@ struct ContentSegment {
     QPointF pos;
     QRectF rect;
     bool patternFill = false;
+    int renderMode = 0; // Text Rendering Mode (Tr)
     QString text;
 };
 

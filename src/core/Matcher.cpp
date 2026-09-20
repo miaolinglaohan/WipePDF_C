@@ -34,6 +34,13 @@ MatchRule Matcher::createRuleFromElement(const PdfDocument &doc, int pageIdx, co
         return rule;
     }
 
+    if (mode == "fingerprint") {
+        rule.targetHash = el.hash();
+        rule.anchorX = cx;
+        rule.anchorY = cy;
+        return rule;
+    }
+
     if (mode == "text" && el.type == ElementType::Text) {
         rule.textPattern = QRegularExpression::escape(el.text.trimmed());
         return rule;
@@ -52,11 +59,13 @@ MatchRule Matcher::createRuleFromElement(const PdfDocument &doc, int pageIdx, co
         rule.urlPattern = QRegularExpression::escape(el.url.trimmed());
         rule.anchorY = cy;
     } else if (el.type == ElementType::Image) {
+        rule.mode = "fingerprint"; // Upgrade auto to fingerprint for robustness
+        rule.targetHash = el.hash();
         rule.anchorX = cx;
         rule.anchorY = cy;
-        rule.relativeRegion = relRegion;
     } else { // Drawing
-        rule.relativeRegion = relRegion;
+        rule.mode = "fingerprint";
+        rule.targetHash = el.hash();
         rule.anchorY = cy;
     }
 
@@ -92,6 +101,13 @@ bool Matcher::elementMatches(const Element &el, const MatchRule &rule, const QRe
     if (!rule.urlPattern.isEmpty() && el.type == ElementType::Link) {
         QRegularExpression re(rule.urlPattern);
         if (!re.match(el.url).hasMatch()) {
+            return false;
+        }
+    }
+
+    // 4. Fingerprint Match
+    if (rule.mode == "fingerprint") {
+        if (el.hash() != rule.targetHash) {
             return false;
         }
     }

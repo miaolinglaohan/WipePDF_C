@@ -19,6 +19,13 @@ public:
     static std::vector<Element> detectPatternOverlays(const PdfDocument &doc, int pageIdx, float minRatio = 0.9f);
 
     static std::vector<Element> pickElementAt(const PdfDocument &doc, int pageIdx, const QPointF &point, bool includeDrawings = true, bool includeImages = true);
+    
+    // Dimension 1: Frequency Analysis Engine
+    struct FrequencyResult {
+        int count = 0;
+        Element sample;
+    };
+    static std::unordered_map<size_t, FrequencyResult> analyzeDocumentFrequencies(const PdfDocument &doc);
 };
 
 } // namespace wipepdf

@@ -61,6 +61,23 @@ struct Element {
         }
         return s;
     }
+
+    size_t hash() const {
+        size_t h = std::hash<int>{}(static_cast<int>(type));
+        // Discretize aspect ratio to 1 decimal place for stable hashing
+        float aspect = (bbox.height() > 0) ? (bbox.width() / bbox.height()) : 0.0f;
+        h ^= std::hash<int>{}(static_cast<int>(aspect * 10)) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        
+        if (type == ElementType::Text && !text.isEmpty()) {
+            h ^= std::hash<std::string>{}(text.toStdString()) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        } else if (type == ElementType::Link && !url.isEmpty()) {
+            h ^= std::hash<std::string>{}(url.toStdString()) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        } else if (type == ElementType::Image || type == ElementType::Drawing) {
+            h ^= std::hash<int>{}(static_cast<int>(rect_ratio * 100)) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            // Ignore position, only structural features
+        }
+        return h;
+    }
 };
 
 } // namespace wipepdf

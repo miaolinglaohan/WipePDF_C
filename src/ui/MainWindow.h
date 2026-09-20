@@ -13,8 +13,11 @@
 #include <QListWidget>
 #include <QStackedWidget>
 #include <QGroupBox>
+#include <QFutureWatcher>
+#include <unordered_map>
 #include <memory>
 #include "PdfViewer.h"
+#include "core/Detectors.h"
 #include "core/PdfDocument.h"
 #include "core/WatermarkCleaner.h"
 
@@ -45,6 +48,8 @@ private slots:
     void onViewerPointClicked(int pageIdx, const QPointF &pdfPt);
     void onViewerPageChanged(int pageIdx, int totalPages);
     void onViewerFileDropped(const QString &filePath);
+    void onFrequenciesAnalyzed();
+    void onSuspectDoubleClicked(QListWidgetItem *item);
 
 private:
     enum class Theme { Dark, Light };
@@ -113,6 +118,10 @@ private:
     QListWidget *m_rulesListWidget = nullptr;
     QLabel *m_interactiveHint = nullptr;
 
+    // Suspects Panel
+    QLabel *m_suspectsLabel = nullptr;
+    QListWidget *m_suspectsListWidget = nullptr;
+
     // Actions
     QPushButton *m_previewBtn = nullptr;
     QPushButton *m_processBtn = nullptr;
@@ -122,6 +131,10 @@ private:
 
     // Center Viewer
     PdfViewer *m_viewer = nullptr;
+
+    // Background scanner
+    QFutureWatcher<std::unordered_map<size_t, wipepdf::Detectors::FrequencyResult>> m_freqScanWatcher;
+    std::unordered_map<size_t, wipepdf::Detectors::FrequencyResult> m_lastFrequencies;
 };
 
 } // namespace wipepdf
