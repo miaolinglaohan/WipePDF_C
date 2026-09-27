@@ -10,7 +10,7 @@
 
 | 指标 / 特性 | 原 Python 版本 | WipePDF C++ 重构版 |
 |---|---|---|
-| **主程序体积** | 约 60 ~ 100 MB (PyInstaller 打包) | **仅 218 KB** (`WipePDF.exe`) |
+| **主程序体积** | 约 60 ~ 100 MB (PyInstaller 打包) | **仅 218 KB** (`WipePDF_C.exe`) |
 | **启动速度** | 需释放临时目录，冷启动 3~5 秒 | **原生编译，零延迟秒开** |
 | **并发与多线程** | 受限于 Python GIL 锁 | **原生 C++ 后台线程（`QtConcurrent::run`），清理任务执行不阻塞界面** |
 | **反编译防护** | Python 字节码极易被逆向与破解 | **原生机器码 (x64 Native)，商业级安全防护** |
@@ -28,7 +28,7 @@
 d:/AI/AIProjects/WipePDF/
 ├── build.ps1                   # 一键自动化构建脚本 (MSVC + Ninja + Qt6)
 ├── CMakeLists.txt              # CMake 现代构建定义
-├── dist/                       # 绿色免安装发布产物 (含 WipePDF.exe 与动态库)
+├── dist/                       # 绿色免安装发布产物 (含 WipePDF_C.exe 与动态库)
 ├── src/
 │   ├── main.cpp                # 程序入口 (高分屏适配、主题应用)
 │   ├── core/                   # 核心算法层 (与 UI 完全解耦，支持无头自动化)
@@ -87,10 +87,12 @@ d:/AI/AIProjects/WipePDF/
 8. 单步撤销 (`Undo` / `Ctrl+Z`) 逻辑验证
 9. 安全原子覆盖写入 (`Safe Overwrite`) 验证（无文件锁冲突）
 10. 中英双语运行时热切换验证
+11. 透明覆盖层（低透明度矢量）检测
+12. 端到端透明覆盖层删除验证
 
 ---
 
 ## 📦 独立运行分发
 
 编译后的免安装便携版位于 `dist/` 目录：
-- 双击直接运行 `dist\WipePDF.exe` 即可使用，无需安装 Python 或任何外部运行时环境。
+- 双击直接运行 `dist\WipePDF_C.exe` 即可使用，无需安装 Python 或任何外部运行时环境。

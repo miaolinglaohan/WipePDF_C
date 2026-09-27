@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(WipePDF VERSION 2.0.0 LANGUAGES C CXX)
+project(WipePDF VERSION 2.2.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -64,6 +64,7 @@ set(GUI_SOURCES
 )
 
 add_executable(WipePDF WIN32 ${GUI_SOURCES})
+set_target_properties(WipePDF PROPERTIES OUTPUT_NAME "WipePDF_C")
 target_link_libraries(WipePDF PRIVATE wipepdf_core)
 
 add_custom_command(TARGET WipePDF POST_BUILD

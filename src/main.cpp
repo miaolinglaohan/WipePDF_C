@@ -6,7 +6,7 @@
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName("WipePDF");
-    app.setApplicationVersion("2.0.0");
+    app.setApplicationVersion("2.2.1");
     app.setOrganizationName("WipePDF");
     app.setWindowIcon(QIcon(":/icons/app.png"));
 
