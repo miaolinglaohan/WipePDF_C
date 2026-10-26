@@ -64,9 +64,13 @@ public:
     bool setPageContentStream(int pageIdx, const QByteArray &bytes);
     int filterPageContentStreams(int pageIdx, const std::function<bool(const QByteArray &streamData)> &shouldRemoveStream);
 
+    // Stream-level watermark removal (Cos-Level Stream Bypass for Form XObject / isolated streams)
+    int removeIsolatedWatermarkStreams(int pageIdx, const QStringList &targetKeywords = QStringList());
+    int removeIsolatedWatermarkStreamsAllPages(const QStringList &targetKeywords = QStringList());
+
     // Save
-    bool save(const QString &outputPath, int garbage = 4, bool deflate = true, bool clean = true, QString *errorMsg = nullptr);
-    bool saveAtomic(const QString &targetPath, int garbage = 4, bool deflate = true, bool clean = true, QString *errorMsg = nullptr);
+    bool save(const QString &outputPath, int garbage = 4, bool deflate = true, bool clean = false, QString *errorMsg = nullptr);
+    bool saveAtomic(const QString &targetPath, int garbage = 4, bool deflate = true, bool clean = false, QString *errorMsg = nullptr);
 
     // Low-level handle access
     fz_context *context() const { return m_ctx; }

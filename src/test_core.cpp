@@ -155,8 +155,124 @@ int main(int argc, char *argv[]) {
         assert(remaining.empty());
     }
 
+#define TEST_CHECK(cond) do { if (!(cond)) { std::cerr << "FAILED check at line " << __LINE__ << ": " #cond << std::endl; std::exit(1); } } while(0)
+
+    // Test 13: 验证 Form XObject 独立流水印（GB 50061 机制）流级无损清除
+    {
+        QString testGbPath = "test_output/form_xobject_watermark.pdf";
+        QFile::remove(testGbPath);
+        bool copyOk = QFile::copy("test_input/sample_watermark.pdf", testGbPath);
+        TEST_CHECK(copyOk);
+
+        PdfDocument synthDoc;
+        QString sErr;
+        bool openOk = synthDoc.open(testGbPath, &sErr);
+        TEST_CHECK(openOk);
+        fz_context *ctx = synthDoc.context();
+        pdf_document *pdoc = synthDoc.pdfDoc();
+        pdf_page *page = pdf_load_page(ctx, pdoc, 0);
+        TEST_CHECK(page != nullptr);
+
+        // 创建 Form XObject: stream 写入 "q BT /FW_0 24 Tf (www.bzfxw.com) Tj ET Q"
+        pdf_obj *formDict = pdf_new_dict(ctx, pdoc, 4);
+        pdf_dict_puts_drop(ctx, formDict, "Type", pdf_new_name(ctx, "XObject"));
+        pdf_dict_puts_drop(ctx, formDict, "Subtype", pdf_new_name(ctx, "Form"));
+        pdf_dict_puts_drop(ctx, formDict, "BBox", pdf_new_rect(ctx, pdoc, fz_make_rect(0, 0, 300, 50)));
+        fz_buffer *formBuf = fz_new_buffer_from_copied_data(ctx, (const unsigned char*)"q BT /FW_0 24 Tf (www.bzfxw.com) Tj ET Q", 44);
+        pdf_obj *formObj = pdf_add_stream(ctx, pdoc, formBuf, formDict, 0);
+        fz_drop_buffer(ctx, formBuf);
+        pdf_drop_obj(ctx, formDict);
+
+        // 挂载到 Page Resources/XObject/WOBJ0
+        pdf_obj *res = pdf_page_resources(ctx, page);
+        if (!res) {
+            res = pdf_dict_puts_dict(ctx, page->obj, "Resources", 2);
+        }
+        pdf_obj *xobjs = pdf_dict_gets(ctx, res, "XObject");
+        if (!xobjs) {
+            xobjs = pdf_dict_puts_dict(ctx, res, "XObject", 2);
+        }
+        pdf_dict_puts(ctx, xobjs, "WOBJ0", formObj);
+
+        // 创建水印流: "q /WOBJ0 Do Q"
+        pdf_obj *wmDict = pdf_new_dict(ctx, pdoc, 0);
+        fz_buffer *wmBuf = fz_new_buffer_from_copied_data(ctx, (const unsigned char*)"q /WOBJ0 Do Q", 13);
+        pdf_obj *wmStream = pdf_add_stream(ctx, pdoc, wmBuf, wmDict, 0);
+        fz_drop_buffer(ctx, wmBuf);
+        pdf_drop_obj(ctx, wmDict);
+
+        // 将 Contents 转换为包含 2 个流的 array: [wmStream, 原 contents]
+        pdf_obj *oldContents = pdf_page_contents(ctx, page);
+        pdf_obj *contentsArr = pdf_new_array(ctx, pdoc, 2);
+        pdf_array_push(ctx, contentsArr, wmStream);
+        if (pdf_is_array(ctx, oldContents)) {
+            int oldLen = pdf_array_len(ctx, oldContents);
+            for (int k = 0; k < oldLen; ++k) {
+                pdf_array_push(ctx, contentsArr, pdf_array_get(ctx, oldContents, k));
+            }
+        } else if (oldContents) {
+            pdf_array_push(ctx, contentsArr, oldContents);
+        }
+        pdf_dict_puts(ctx, page->obj, "Contents", contentsArr);
+        pdf_drop_obj(ctx, contentsArr);
+        pdf_sync_page(ctx, page);
+        pdf_drop_page(ctx, page);
+
+        QString synthOutPath = "test_output/form_xobject_watermark_injected.pdf";
+        QFile::remove(synthOutPath);
+        QString saveErr;
+        bool saveOk = synthDoc.save(synthOutPath, 0, false, false, &saveErr);
+        if (!saveOk) {
+            std::cerr << "synthDoc save failed: " << saveErr.toStdString() << std::endl;
+        }
+        TEST_CHECK(saveOk);
+        synthDoc.close();
+
+        // 重新加载验证注入成功，且能读出 www.bzfxw.com
+        PdfDocument verifyDoc;
+        bool vOpenOk = verifyDoc.open(synthOutPath, &saveErr);
+        TEST_CHECK(vOpenOk);
+        auto blocks = verifyDoc.getTextBlocks(0);
+        bool foundWatermark = false;
+        for (const auto &b : blocks) {
+            if (b.text.contains("www.bzfxw.com")) {
+                foundWatermark = true;
+                break;
+            }
+        }
+        std::cout << "[13.1] Form XObject watermark injected: detected=" << foundWatermark << std::endl;
+        TEST_CHECK(foundWatermark);
+
+        // 执行流级精准清除
+        int removedStreams = verifyDoc.removeIsolatedWatermarkStreams(0, QStringList{"www.bzfxw.com"});
+        std::cout << "[13.2] removeIsolatedWatermarkStreams removed: " << removedStreams << std::endl;
+        TEST_CHECK(removedStreams == 1);
+
+        QString cleanedGbPath = "test_output/form_xobject_cleaned.pdf";
+        bool cleanSaveOk = verifyDoc.save(cleanedGbPath, 4, true, false);
+        TEST_CHECK(cleanSaveOk);
+        verifyDoc.close();
+
+        // 验证清理后的文档：水印已彻底消除，无残留！
+        PdfDocument finalDoc;
+        bool fOpenOk = finalDoc.open(cleanedGbPath);
+        TEST_CHECK(fOpenOk);
+        auto cleanBlocks = finalDoc.getTextBlocks(0);
+        bool stillHasWatermark = false;
+        for (const auto &b : cleanBlocks) {
+            if (b.text.contains("www.bzfxw.com")) {
+                stillHasWatermark = true;
+                break;
+            }
+        }
+        std::cout << "[13.3] Form XObject watermark after clean: still present=" << stillHasWatermark << std::endl;
+        TEST_CHECK(!stillHasWatermark);
+        finalDoc.close();
+        std::cout << "[13] Test Form XObject stream bypass PASSED 100%!" << std::endl;
+    }
+
     std::cout << "\n========================================" << std::endl;
-    std::cout << "  ALL 12 VERIFICATION TESTS PASSED 100% " << std::endl;
+    std::cout << "  ALL 13 VERIFICATION TESTS PASSED 100% " << std::endl;
     std::cout << "========================================" << std::endl;
     return 0;
 }

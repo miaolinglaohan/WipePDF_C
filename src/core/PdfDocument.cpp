@@ -591,6 +591,173 @@ int PdfDocument::filterPageContentStreams(int pageIdx, const std::function<bool(
     return removed;
 }
 
+int PdfDocument::removeIsolatedWatermarkStreams(int pageIdx, const QStringList &targetKeywords) {
+    if (!isOpen() || pageIdx < 0 || pageIdx >= m_pageCount) return 0;
+
+    QStringList kwList = targetKeywords;
+    if (kwList.isEmpty()) {
+        kwList = QStringList{
+            "www.", "http://", "https://", ".com", ".cn", ".net", ".org",
+            "扫描全能王", "camscanner", "淘宝", "微信", "加群", "公众号", "bzfxw", "workpdf"
+        };
+    }
+
+    QList<QByteArray> kwLowerList;
+    for (const QString &kw : kwList) {
+        QString trimmed = kw.trimmed();
+        if (!trimmed.isEmpty()) {
+            kwLowerList.append(trimmed.toLower().toUtf8());
+        }
+    }
+    if (kwLowerList.isEmpty()) return 0;
+
+    pdf_page *page = pdf_load_page(m_ctx, m_pdfDoc, pageIdx);
+    if (!page) return 0;
+
+    pdf_obj *contents = pdf_page_contents(m_ctx, page);
+    if (!contents || !pdf_is_array(m_ctx, contents)) {
+        // 如果不是流数组，说明该页不是通过独立流附加水印的，跳过
+        pdf_drop_page(m_ctx, page);
+        return 0;
+    }
+
+    int totalStreams = pdf_array_len(m_ctx, contents);
+    if (totalStreams <= 1) {
+        // 只有一个流的不动，防止误删整个页面的正文
+        pdf_drop_page(m_ctx, page);
+        return 0;
+    }
+
+    pdf_obj *resources = pdf_page_resources(m_ctx, page);
+    pdf_obj *xobjDict = resources ? pdf_dict_gets(m_ctx, resources, "XObject") : nullptr;
+
+    std::vector<int> streamsToRemove;
+    std::vector<std::string> xobjsToDelete;
+
+    for (int i = 0; i < totalStreams; ++i) {
+        pdf_obj *item = pdf_array_get(m_ctx, contents, i);
+        if (!item) continue;
+
+        fz_buffer *buf = nullptr;
+        fz_try(m_ctx) {
+            buf = pdf_load_stream(m_ctx, item);
+        } fz_catch(m_ctx) {
+            buf = nullptr;
+        }
+        if (!buf) continue;
+
+        unsigned char *data = nullptr;
+        size_t len = fz_buffer_storage(m_ctx, buf, &data);
+        if (!data || len == 0 || len > 4096) {
+            // 正文内容流通常很大（几 KB 到几十 KB），纯水印流通常小于 1KB（GB50061 仅 60 字节）
+            fz_drop_buffer(m_ctx, buf);
+            continue;
+        }
+
+        QByteArray stmBytes(reinterpret_cast<const char *>(data), static_cast<int>(len));
+        fz_drop_buffer(m_ctx, buf);
+
+        // 检查是否包含扫描大图，如果有则绝对是正文流，予以保护
+        if (stmBytes.contains("/Image") || stmBytes.contains("BI\n") || stmBytes.contains("BI\r") || stmBytes.contains("/Subtype /Image")) {
+            continue;
+        }
+
+        bool isWatermark = false;
+        QByteArray stmLower = stmBytes.toLower();
+
+        // 规则 A：水印流直接内嵌文本匹配
+        for (const auto &kw : kwLowerList) {
+            if (stmLower.contains(kw)) {
+                isWatermark = true;
+                break;
+            }
+        }
+
+        // 规则 B：水印流通过 "Do" 指令调用了外部 Form XObject
+        std::string matchedXObjName;
+        if (!isWatermark && (stmBytes.contains(" Do") || stmBytes.contains(" do"))) {
+            static QRegularExpression xobjRe(R"(/([A-Za-z0-9_\-]+)\s+[Dd][Oo])");
+            QString stmStr = QString::fromLatin1(stmBytes);
+            auto it = xobjRe.globalMatch(stmStr);
+            while (it.hasNext()) {
+                auto match = it.next();
+                QString xname = match.captured(1);
+                if (xobjDict) {
+                    pdf_obj *formObj = pdf_dict_gets(m_ctx, xobjDict, xname.toLatin1().constData());
+                    if (formObj) {
+                        fz_buffer *formBuf = nullptr;
+                        fz_try(m_ctx) {
+                            formBuf = pdf_load_stream(m_ctx, formObj);
+                        } fz_catch(m_ctx) {
+                            formBuf = nullptr;
+                        }
+                        if (formBuf) {
+                            unsigned char *fData = nullptr;
+                            size_t fLen = fz_buffer_storage(m_ctx, formBuf, &fData);
+                            if (fData && fLen > 0) {
+                                QByteArray formBytes(reinterpret_cast<const char *>(fData), static_cast<int>(fLen));
+                                QByteArray formLower = formBytes.toLower();
+                                for (const auto &kw : kwLowerList) {
+                                    if (formLower.contains(kw)) {
+                                        isWatermark = true;
+                                        matchedXObjName = xname.toStdString();
+                                        break;
+                                    }
+                                }
+                            }
+                            fz_drop_buffer(m_ctx, formBuf);
+                        }
+                    }
+                }
+                if (isWatermark) break;
+            }
+        }
+
+        if (isWatermark) {
+            streamsToRemove.push_back(i);
+            if (!matchedXObjName.empty()) {
+                xobjsToDelete.push_back(matchedXObjName);
+            }
+        }
+    }
+
+    int removedCount = 0;
+    if (!streamsToRemove.empty()) {
+        // 从后往前删除 array 元素，避免索引移位
+        for (auto rit = streamsToRemove.rbegin(); rit != streamsToRemove.rend(); ++rit) {
+            int idx = *rit;
+            pdf_obj *item = pdf_array_get(m_ctx, contents, idx);
+            if (item) {
+                // 清空流内容双保险
+                fz_buffer *emptyBuf = fz_new_buffer(m_ctx, 0);
+                pdf_update_stream(m_ctx, m_pdfDoc, item, emptyBuf, 0);
+                fz_drop_buffer(m_ctx, emptyBuf);
+            }
+            pdf_array_delete(m_ctx, contents, idx);
+            removedCount++;
+        }
+
+        // 从 Resources/XObject 字典中清除被引用的 Form XObject
+        if (xobjDict) {
+            for (const auto &xname : xobjsToDelete) {
+                pdf_dict_dels(m_ctx, xobjDict, xname.c_str());
+            }
+        }
+    }
+
+    pdf_drop_page(m_ctx, page);
+    return removedCount;
+}
+
+int PdfDocument::removeIsolatedWatermarkStreamsAllPages(const QStringList &targetKeywords) {
+    if (!isOpen()) return 0;
+    int total = 0;
+    for (int p = 0; p < m_pageCount; ++p) {
+        total += removeIsolatedWatermarkStreams(p, targetKeywords);
+    }
+    return total;
+}
+
 bool PdfDocument::save(const QString &outputPath, int garbage, bool deflate, bool clean, QString *errorMsg) {
     if (!isOpen()) {
         if (errorMsg) *errorMsg = "No document is currently open";

@@ -112,9 +112,9 @@ CleanerResult WatermarkCleaner::process(const QString &inputPath, const QString 
 
     bool saveOk = false;
     if (overwrite) {
-        saveOk = doc.saveAtomic(finalOut, 4, true, true, &err);
+        saveOk = doc.saveAtomic(finalOut, 4, true, false, &err);
     } else {
-        saveOk = doc.save(finalOut, 4, true, true, &err);
+        saveOk = doc.save(finalOut, 4, true, false, &err);
         doc.close();
     }
 
@@ -167,6 +167,18 @@ int WatermarkCleaner::applyAutoRules(PdfDocument &doc, const AutoOptions &option
     int pages = doc.pageCount();
 
     for (int p = 0; p < pages; ++p) {
+        // 0. 优先执行流级无损水印清除（针对 Form XObject / 独立 Content Stream 注入的外部调用水印）
+        if (options.removeAllLinks || options.removeByTextPattern || options.detectTransparentOverlays) {
+            QStringList autoKw;
+            if (options.removeAllLinks) {
+                autoKw << "www." << "http://" << "https://" << ".com" << ".cn" << ".net" << ".org" << "bzfxw";
+            }
+            if (options.removeByTextPattern && !options.textPattern.isEmpty()) {
+                autoKw << options.textPattern;
+            }
+            count += doc.removeIsolatedWatermarkStreams(p, autoKw);
+        }
+
         // 1. Links
         if (options.removeAllLinks) {
             count += doc.deleteAllLinks(p, options.linkUrlPattern);
@@ -271,15 +283,23 @@ bool WatermarkCleaner::removeElement(PdfDocument &doc, int pageIdx, const Elemen
 
     if (el.type == ElementType::Text) {
         int removed = 0;
-        if (!el.text.isEmpty()) {
-            // 1. Filter dedicated stream if present
-            removed += doc.filterPageContentStreams(pageIdx, [&](const QByteArray &data) {
-                if (data.size() > 10000) return false;
-                return data.contains(el.text.toLatin1());
-            });
+        if (!el.text.trimmed().isEmpty()) {
+            QString cleanText = el.text.trimmed();
+            // 1. 优先执行流级精准移除（针对 Form XObject / 独立 Content Stream 封装水印，如 GB 50061 典型）
+            removed += doc.removeIsolatedWatermarkStreams(pageIdx, QStringList{ cleanText });
 
-            // 2. Remove matching text from content stream
-            removed += ContentEdit::removeTextByContent(doc, pageIdx, el.text.trimmed());
+            // 2. 过滤普通专用 stream
+            if (removed == 0) {
+                removed += doc.filterPageContentStreams(pageIdx, [&](const QByteArray &data) {
+                    if (data.size() > 10000) return false;
+                    return data.contains(cleanText.toLatin1());
+                });
+            }
+
+            // 3. 页面常规内容流 Text Token 精准抹除
+            if (removed == 0) {
+                removed += ContentEdit::removeTextByContent(doc, pageIdx, cleanText);
+            }
         }
 
         // Fallback: ONLY if the bounding box has NO other text except this element

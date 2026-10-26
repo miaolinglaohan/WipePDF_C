@@ -598,8 +598,8 @@ void MainWindow::onSwitchTheme() {
 }
 
 void MainWindow::retranslateUi() {
-    setWindowTitle(tr_("app_title") + " v2.2.1");
-    m_brandLabel->setText(tr_("app_brand") + " v2.2.1");
+    setWindowTitle(tr_("app_title") + " v2.2.2");
+    m_brandLabel->setText(tr_("app_brand") + " v2.2.2");
 
     // Group box headers
     m_ioGroup->setTitle(tr_("input_frame"));
